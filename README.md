@@ -222,6 +222,7 @@ await build({
 </details>
 
 <br />
+
 By default, the generated declaration files are following the source structure.
 
 Fortunately, with the help of [API Extractor](https://api-extractor.com/), the plugin can bundle all types into a single file. You just need to install `@microsoft/api-extractor` and set `bundleTypes: true`:

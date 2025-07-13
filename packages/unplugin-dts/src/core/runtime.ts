@@ -5,11 +5,11 @@ import { cpus } from 'node:os'
 
 import ts from 'typescript'
 import { createFilter } from '@rollup/pluginutils'
-import { green, yellow } from 'kolorist'
+import { green, red, yellow } from 'kolorist'
 import { loadProgramProcesses } from './program'
 import { JsonResolver, SvelteResolver, VueResolver, parseResolvers } from './resolvers'
 import { hasExportDefault, hasNormalExport, normalizeGlob, transformCode } from './transform'
-import { bundleDtsFiles } from './bundle'
+import { bundleDtsFiles, getHasExtractor } from './bundle'
 import {
   defaultIndex,
   dtsRE,
@@ -657,58 +657,67 @@ export class Runtime {
       handleDebug('insert index')
   
       if (bundleTypes) {
-        logger.info(green(`${logPrefix} Start rollup declaration files...`))
-  
-        const rollupFiles = new Set<string>()
-        const compilerOptions = configPath
-          ? getTsConfig(configPath, this.host.readFile).compilerOptions
-          : rawCompilerOptions
-  
-        const rollup = async (path: string) => {
-          const result = bundleDtsFiles({
-            root,
-            configPath,
-            compilerOptions,
-            outDir,
-            entryPath: path,
-            fileName: basename(path),
-            libFolder: getTsLibFolder(),
-            extractorConfig,
-            bundledPackages,
-            invokeOptions,
-          })
-  
-          emittedFiles.delete(path)
-          rollupFiles.add(path)
-  
-          if (typeof afterRollup === 'function') {
-            await unwrapPromise(afterRollup(result))
-          }
-        }
-  
-        if (multiple) {
-          await runParallel(cpus().length, entryNames, async name => {
-            await rollup(cleanPath(resolve(outDir, tsToDts(name)), emittedFiles))
-          })
-        } else {
-          await rollup(typesPath)
-        }
-  
-        await runParallel(cpus().length, Array.from(emittedFiles.keys()), f => unlink(f))
-        removeDirIfEmpty(outDir)
-        emittedFiles.clear()
-  
-        const declared = declareModules.join('\n')
-  
-        await runParallel(cpus().length, [...rollupFiles], async filePath => {
-          await writeOutput(
-            filePath,
-            (await readFile(filePath, 'utf-8')) + (declared ? `\n${declared}` : ''),
-            dirname(filePath),
+        logger.info(green(`${logPrefix} Start bundling declaration files...`))
+
+        if (!getHasExtractor()) {
+          logger.error(
+            `\n${logPrefix} ${red("Failed to load '@microsoft/api-extractor', have you installed it?")}\n`,
           )
-        })
-  
-        handleDebug('rollup output')
+          logger.warn(
+            `\n${logPrefix} ${yellow('Error occurred, skip bundle declaration files.')}\n`,
+          )
+        } else {
+          const rollupFiles = new Set<string>()
+          const compilerOptions = configPath
+            ? getTsConfig(configPath, this.host.readFile).compilerOptions
+            : rawCompilerOptions
+    
+          const rollup = async (path: string) => {
+            const result = await bundleDtsFiles({
+              root,
+              configPath,
+              compilerOptions,
+              outDir,
+              entryPath: path,
+              fileName: basename(path),
+              libFolder: getTsLibFolder(),
+              extractorConfig,
+              bundledPackages,
+              invokeOptions,
+            })
+    
+            emittedFiles.delete(path)
+            rollupFiles.add(path)
+    
+            if (typeof afterRollup === 'function') {
+              await unwrapPromise(afterRollup(result))
+            }
+          }
+    
+          if (multiple) {
+            await runParallel(cpus().length, entryNames, async name => {
+              await rollup(cleanPath(resolve(outDir, tsToDts(name)), emittedFiles))
+            })
+          } else {
+            await rollup(typesPath)
+          }
+    
+          await runParallel(cpus().length, Array.from(emittedFiles.keys()), f => unlink(f))
+          removeDirIfEmpty(outDir)
+          emittedFiles.clear()
+    
+          const declared = declareModules.join('\n')
+    
+          await runParallel(cpus().length, [...rollupFiles], async filePath => {
+            await writeOutput(
+              filePath,
+              (await readFile(filePath, 'utf-8')) + (declared ? `\n${declared}` : ''),
+              dirname(filePath),
+            )
+          })
+    
+          handleDebug('rollup output')
+        }
       }
     }
   

@@ -222,6 +222,7 @@ await build({
 </details>
 
 <br />
+
 默认情况，生成的类型文件会跟随源文件的结构。
 
 好在插件借助 [API Extractor](https://api-extractor.com/) 提供了汇总所有类型到一个文件的能力，只需安装 `@microsoft/api-extractor` 并指定 `bundleTypes: true`：

@@ -1,5 +1,4 @@
-import { Extractor, ExtractorConfig } from '@microsoft/api-extractor'
-import { resolve, tryGetPkgPath } from './utils'
+import { resolve, tryGetPackageInfo, tryGetPkgPath } from './utils'
 
 import type { ExtractorLogLevel, IExtractorInvokeOptions } from '@microsoft/api-extractor'
 import type { BundleConfig } from './types'
@@ -17,9 +16,15 @@ export interface BundleDtsOptions {
   invokeOptions?: IExtractorInvokeOptions
 }
 
+let hasExtractor: boolean | undefined
+
+export function getHasExtractor() {
+  return typeof hasExtractor !== 'undefined' ? hasExtractor : (hasExtractor = !!tryGetPackageInfo('@microsoft/api-extractor'))
+}
+
 const dtsRE = /\.d\.(m|c)?tsx?$/
 
-export function bundleDtsFiles({
+export async function bundleDtsFiles({
   root,
   configPath,
   compilerOptions,
@@ -31,6 +36,8 @@ export function bundleDtsFiles({
   bundledPackages,
   invokeOptions = {},
 }: BundleDtsOptions) {
+  const { Extractor, ExtractorConfig } = await import('@microsoft/api-extractor')
+
   const configObjectFullPath = resolve(root, 'api-extractor.json')
 
   if (!dtsRE.test(fileName)) {
