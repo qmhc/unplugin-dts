@@ -1,3 +1,12 @@
+# [1.0.0-beta.4](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.3...v1.0.0-beta.4) (2025-07-13)
+
+
+### Bug Fixes
+
+* should dynamic load api-extractor when bundling ([4ad5a76](https://github.com/qmhc/vite-plugin-dts/commit/4ad5a76e9847ab1d080d78f160e1c0dffd138911)), closes [#435](https://github.com/qmhc/vite-plugin-dts/issues/435)
+
+
+
 # [1.0.0-beta.3](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.2...v1.0.0-beta.3) (2025-07-07)
 
 
