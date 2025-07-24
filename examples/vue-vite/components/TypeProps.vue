@@ -9,7 +9,6 @@ export type Props = {
 }
 
 withDefaults(defineProps<Props>(), {
-  color: 'blue',
   array: () => [],
 })
 

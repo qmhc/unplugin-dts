@@ -12,9 +12,9 @@ export type { Resolver, RollupConfig }
 
 export interface PluginOptions
   extends Omit<
-      Partial<CreateRuntimeOptions>,
+    Partial<CreateRuntimeOptions>,
       'entries' | 'libName' | 'indexName' | 'logger'
-    >,
+  >,
   Omit<EmitOptions, 'logPrefix'> {
   /**
    * Whether to emit declaration files only.

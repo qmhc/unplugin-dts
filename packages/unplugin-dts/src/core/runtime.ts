@@ -163,13 +163,13 @@ export class Runtime {
     const outDirs = options.outDirs
       ? ensureArray(options.outDirs).map(d => ensureAbsolute(d, root))
       : [
-          ensureAbsolute(
-            content?.raw.compilerOptions?.outDir
-              ? resolveConfigDir(content.raw.compilerOptions.outDir, root)
-              : 'dist',
-            root,
-          ),
-        ]
+        ensureAbsolute(
+          content?.raw.compilerOptions?.outDir
+            ? resolveConfigDir(content.raw.compilerOptions.outDir, root)
+            : 'dist',
+          root,
+        ),
+      ]
   
     const {
       // Here we are using the default value to set the `baseUrl` to the current directory if no value exists. This is

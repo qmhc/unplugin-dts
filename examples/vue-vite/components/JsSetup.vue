@@ -4,8 +4,8 @@ import { ref } from 'vue'
 const props = defineProps({
   count: {
     type: Number,
-    default: 0
-  }
+    default: 0,
+  },
 })
 
 const emit = defineEmits(['on-add'])

@@ -27,8 +27,8 @@ export default {
         'wip',
         'workflow',
         'types',
-        'release'
-      ]
-    ]
-  }
+        'release',
+      ],
+    ],
+  },
 }

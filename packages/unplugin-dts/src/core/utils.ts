@@ -401,8 +401,8 @@ export function setModuleResolution(options: CompilerOptions) {
     typeof options.module === 'number'
       ? options.module
       : (options.target ?? ts.ScriptTarget.ES5 >= 2)
-          ? ts.ModuleKind.ES2015
-          : ts.ModuleKind.CommonJS
+        ? ts.ModuleKind.ES2015
+        : ts.ModuleKind.CommonJS
 
   let moduleResolution: ts.ModuleResolutionKind
 
