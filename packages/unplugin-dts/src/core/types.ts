@@ -15,7 +15,7 @@ export interface Logger {
 
 export type BundleConfig = Omit<
   IExtractorConfigPrepareOptions['configObject'],
-  'projectFolder' | 'mainEntryPointFilePath' | 'compiler' | 'dtsRollup' | 'bundledPackages'
+  'projectFolder' | 'mainEntryPointFilePath' | 'bundledPackages'
 >
 
 export type AliasOptions = {

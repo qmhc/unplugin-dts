@@ -1,4 +1,4 @@
-import { resolve, tryGetPackageInfo, tryGetPkgPath } from './utils'
+import { mergeObjects, resolve, tryGetPackageInfo, tryGetPkgPath } from './utils'
 
 import type { ExtractorLogLevel, IExtractorInvokeOptions } from '@microsoft/api-extractor'
 import type { BundleConfig } from './types'
@@ -49,50 +49,47 @@ export async function bundleDtsFiles({
     compilerOptions = { ...compilerOptions, module: 'ESNext' }
   }
 
-  const config = ExtractorConfig.prepare({
-    configObject: {
-      ...extractorConfig,
-      bundledPackages,
-      projectFolder: root,
-      mainEntryPointFilePath: entryPath,
-      compiler: {
-        tsconfigFilePath: configPath,
-        overrideTsconfig: {
-          $schema: 'http://json.schemastore.org/tsconfig',
-          compilerOptions,
-        },
-      },
-      apiReport: {
-        enabled: false,
-        reportFileName: '<unscopedPackageName>.api.md',
-        ...extractorConfig.apiReport,
-      },
-      docModel: {
-        enabled: false,
-        ...extractorConfig.docModel,
-      },
-      dtsRollup: {
-        enabled: true,
-        publicTrimmedFilePath: resolve(outDir, fileName),
-      },
-      tsdocMetadata: {
-        enabled: false,
-        ...extractorConfig.tsdocMetadata,
-      },
-      messages: {
-        compilerMessageReporting: {
-          default: {
-            logLevel: 'none' as ExtractorLogLevel.None,
-          },
-        },
-        extractorMessageReporting: {
-          default: {
-            logLevel: 'none' as ExtractorLogLevel.None,
-          },
-        },
-        ...extractorConfig.messages,
+  const configObject = mergeObjects({
+    bundledPackages,
+    projectFolder: root,
+    mainEntryPointFilePath: entryPath,
+    compiler: {
+      tsconfigFilePath: configPath,
+      overrideTsconfig: {
+        $schema: 'http://json.schemastore.org/tsconfig',
+        compilerOptions,
       },
     },
+    apiReport: {
+      enabled: false,
+      reportFileName: '<unscopedPackageName>.api.md',
+    },
+    docModel: {
+      enabled: false,
+    },
+    dtsRollup: {
+      enabled: true,
+      publicTrimmedFilePath: resolve(outDir, fileName),
+    },
+    tsdocMetadata: {
+      enabled: false,
+    },
+    messages: {
+      compilerMessageReporting: {
+        default: {
+          logLevel: 'none' as ExtractorLogLevel.None,
+        },
+      },
+      extractorMessageReporting: {
+        default: {
+          logLevel: 'none' as ExtractorLogLevel.None,
+        },
+      },
+    },
+  }, extractorConfig)
+
+  const config = ExtractorConfig.prepare({
+    configObject,
     configObjectFullPath,
     packageJsonFullPath: tryGetPkgPath(configObjectFullPath),
   })

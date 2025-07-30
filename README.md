@@ -302,14 +302,10 @@ import type { IExtractorConfigPrepareOptions, IExtractorInvokeOptions } from '@m
 
 type MaybePromise<T> = T | Promise<T>
 
-export type RollupConfig = Omit<
+export type BundleConfig = Omit<
   IExtractorConfigPrepareOptions['configObject'],
-  | 'projectFolder'
-  | 'mainEntryPointFilePath'
-  | 'compiler'
-  | 'dtsRollup'
-  | 'bundledPackages'
-  >
+  'projectFolder' | 'mainEntryPointFilePath' | 'bundledPackages'
+>
 
 export interface ResolverTransformOutput {
   path: string,
