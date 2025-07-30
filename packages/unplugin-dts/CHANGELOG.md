@@ -1,3 +1,27 @@
+# [1.0.0-beta.5](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.4...v1.0.0-beta.5) (2025-07-30)
+
+
+### Bug Fixes
+
+* deep merge bundleTypes.extractorConfig ([e305f33](https://github.com/qmhc/vite-plugin-dts/commit/e305f336b109e124c814fcf3cc9172e2a7c376ba)), closes [#438](https://github.com/qmhc/vite-plugin-dts/issues/438)
+
+
+### Features
+
+* add processor option for program creation ([d98261b](https://github.com/qmhc/vite-plugin-dts/commit/d98261b190ca99bf6387c8c72ddeaeb3b6ac8c51)), closes [#436](https://github.com/qmhc/vite-plugin-dts/issues/436)
+* supports specify real config file for bundling types ([aab0d1b](https://github.com/qmhc/vite-plugin-dts/commit/aab0d1b7d506e2ce97d2d583810f3ddee7b168a8))
+
+
+### BREAKING CHANGES
+
+* The plugin will no longer heuristically
+detect Vue dependencies to determine whether to use
+`@vue/language-core` for creating the program. You now
+need to explicitly specify the `processor` option to tell
+the plugin which method to use for program creation.
+
+
+
 # [1.0.0-beta.4](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.3...v1.0.0-beta.4) (2025-07-13)
 
 
