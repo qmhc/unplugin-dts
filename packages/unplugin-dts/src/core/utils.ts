@@ -85,7 +85,7 @@ export async function unwrapPromise<T>(maybePromise: T | Promise<T>) {
   return isPromise(maybePromise) ? await maybePromise : maybePromise
 }
 
-export function mergeObjects<T extends Record<string, unknown>, U extends Record<string, unknown>>(
+export function mergeObjects<T extends Record<string, any>, U extends Record<string, any>>(
   sourceObj: T,
   targetObj: U,
 ) {

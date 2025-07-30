@@ -457,6 +457,7 @@ export class Runtime {
       extractorConfig,
       bundledPackages,
       invokeOptions,
+      configPath: bundleConfigPath,
     } = isNativeObj(bundleTypes) ? bundleTypes : {}
   
     const cleanPath = (path: string, emittedFiles: Map<string, string>) => {
@@ -675,7 +676,10 @@ export class Runtime {
           const rollup = async (path: string) => {
             const result = await bundleDtsFiles({
               root,
-              configPath,
+              // api-extractor.json
+              configPath: bundleConfigPath,
+              // tsconfig.json
+              tsconfigPath: configPath,
               compilerOptions,
               outDir,
               entryPath: path,

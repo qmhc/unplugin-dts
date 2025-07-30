@@ -15,7 +15,7 @@ export interface Logger {
 
 export type BundleConfig = Omit<
   IExtractorConfigPrepareOptions['configObject'],
-  'projectFolder' | 'mainEntryPointFilePath' | 'bundledPackages'
+  'extends' | 'projectFolder' | 'mainEntryPointFilePath' | 'bundledPackages'
 >
 
 export type AliasOptions = {
@@ -183,7 +183,15 @@ export interface EmitOptions {
      * @default {}
      * @see https://api-extractor.com/pages/setup/invoking/#invoking-from-a-build-script
      */
-    invokeOptions?: IExtractorInvokeOptions
+    invokeOptions?: IExtractorInvokeOptions,
+    /**
+     * Specify a real api-extractor config file path.
+     * 
+     * When invoking, the configuration will be merged in the order: internal config, file config, `extractorConfig`.
+     * 
+     * @default './api-extractor.json'
+     */
+    configPath?: string
   },
   /**
    * Hook called prior to writing each declaration file.

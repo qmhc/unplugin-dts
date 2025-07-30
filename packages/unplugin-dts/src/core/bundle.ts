@@ -1,11 +1,12 @@
-import { mergeObjects, resolve, tryGetPackageInfo, tryGetPkgPath } from './utils'
+import { ensureAbsolute, mergeObjects, resolve, tryGetPackageInfo, tryGetPkgPath } from './utils'
 
-import type { ExtractorLogLevel, IExtractorInvokeOptions } from '@microsoft/api-extractor'
+import type { ExtractorLogLevel, IConfigFile, IExtractorInvokeOptions } from '@microsoft/api-extractor'
 import type { BundleConfig } from './types'
 
 export interface BundleDtsOptions {
   root: string,
   configPath?: string,
+  tsconfigPath?: string,
   compilerOptions: Record<string, any>,
   outDir: string,
   entryPath: string,
@@ -27,6 +28,7 @@ const dtsRE = /\.d\.(m|c)?tsx?$/
 export async function bundleDtsFiles({
   root,
   configPath,
+  tsconfigPath,
   compilerOptions,
   outDir,
   entryPath,
@@ -38,7 +40,8 @@ export async function bundleDtsFiles({
 }: BundleDtsOptions) {
   const { Extractor, ExtractorConfig } = await import('@microsoft/api-extractor')
 
-  const configObjectFullPath = resolve(root, 'api-extractor.json')
+  configPath = configPath ? ensureAbsolute(configPath, root) : ''
+  const configObjectFullPath = configPath || resolve(root, 'api-extractor.json')
 
   if (!dtsRE.test(fileName)) {
     fileName += '.d.ts'
@@ -49,12 +52,12 @@ export async function bundleDtsFiles({
     compilerOptions = { ...compilerOptions, module: 'ESNext' }
   }
 
-  const configObject = mergeObjects({
+  const configObject: IConfigFile = {
     bundledPackages,
     projectFolder: root,
     mainEntryPointFilePath: entryPath,
     compiler: {
-      tsconfigFilePath: configPath,
+      tsconfigFilePath: tsconfigPath,
       overrideTsconfig: {
         $schema: 'http://json.schemastore.org/tsconfig',
         compilerOptions,
@@ -86,7 +89,15 @@ export async function bundleDtsFiles({
         },
       },
     },
-  }, extractorConfig)
+  }
+
+  if (configPath) {
+    mergeObjects(configObject, ExtractorConfig.loadFile(configPath))
+  }
+
+  if (Object.keys(extractorConfig).length) {
+    mergeObjects(configObject, extractorConfig)
+  }
 
   const config = ExtractorConfig.prepare({
     configObject,

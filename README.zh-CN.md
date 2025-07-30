@@ -321,7 +321,7 @@ type MaybePromise<T> = T | Promise<T>
 
 export type BundleConfig = Omit<
   IExtractorConfigPrepareOptions['configObject'],
-  'projectFolder' | 'mainEntryPointFilePath' | 'bundledPackages'
+  'extends' | 'projectFolder' | 'mainEntryPointFilePath' | 'bundledPackages'
 >
 
 export interface ResolverTransformOutput {
@@ -519,7 +519,15 @@ export interface PluginOptions {
      * @default {}
      * @see https://api-extractor.com/pages/setup/invoking/#invoking-from-a-build-script
      */
-    invokeOptions?: IExtractorInvokeOptions
+    invokeOptions?: IExtractorInvokeOptions,
+    /**
+     * 指定一个真实的 api-extractor 配置文件路径
+     * 
+     * 调用时将会按照内部配置、文件配置、`extractorConfig` 的顺序合并
+     * 
+     * @default './api-extractor.json'
+     */
+    configPath?: string
   },
 
   /**
