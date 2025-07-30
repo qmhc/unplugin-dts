@@ -40,6 +40,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
     copyDtsFiles = meta.framework !== 'vite',
     declarationOnly = false,
     strictOutput = true,
+    afterBootstrap,
     afterDiagnostic,
     beforeWriteFile,
     afterRollup,
@@ -212,6 +213,10 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
         for (const file of runtime.getRootFiles()) {
           this.addWatchFile(file)
         }
+      }
+
+      if (typeof afterBootstrap === 'function') {
+        await unwrapPromise(afterBootstrap(runtime))
       }
 
       handleDebug('create ts program')

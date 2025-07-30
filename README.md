@@ -531,6 +531,13 @@ export interface PluginOptions {
   declarationOnly?: boolean,
 
   /**
+   * Hook called after the runtime is created.
+   *
+   * @default () => {}
+   */
+  afterBootstrap?: (runtime: Runtime) => MaybePromise<void>,
+
+  /**
    * Hook called after diagnostic is emitted.
    *
    * According to the `diagnostics.length`, you can judge whether there is any type error.

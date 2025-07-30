@@ -6,9 +6,10 @@ import type {
   MaybePromise,
   Resolver,
   RollupConfig,
+  Runtime,
 } from './core'
 
-export type { Resolver, RollupConfig }
+export type { Resolver, RollupConfig, Runtime }
 
 export interface PluginOptions
   extends Omit<
@@ -24,6 +25,12 @@ export interface PluginOptions
    * @default false
    */
   declarationOnly?: boolean,
+  /**
+   * Hook called after the runtime is created.
+   *
+   * @default () => {}
+   */
+  afterBootstrap?: (runtime: Runtime) => MaybePromise<void>,
   /**
    * Hook called after diagnostic is emitted.
    *

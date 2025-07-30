@@ -548,6 +548,13 @@ export interface PluginOptions {
   declarationOnly?: boolean,
 
   /**
+   * 运行时创建完毕后的钩子
+   *
+   * @default () => {}
+   */
+  afterBootstrap?: (runtime: Runtime) => MaybePromise<void>,
+
+  /**
    * 获取诊断信息后的钩子
    *
    * 可以根据 `diagnostics.length` 来判断有误类型错误
