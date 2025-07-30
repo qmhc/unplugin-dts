@@ -24,6 +24,12 @@ export type AliasOptions = {
 
 export interface CreateRuntimeOptions {
   /**
+   * Specify which (program) process you prefer.
+   *
+   * @default 'ts'
+   */
+  processor?: 'vue' | 'ts',
+  /**
    * Specify root directory.
    *
    * Defaults to the 'root' of the Vite config, or `process.cwd()` if using Rollup.

@@ -245,10 +245,16 @@ If you start with official Vite template, you should specify the `tsconfigPath`:
 }
 ```
 
-One more, if you are using it in a **Vue project**, you need to install `@vue/language-core` as a peer dependency for the plugin:
+One more, if you are using it in a **Vue project**, you need to install `@vue/language-core` as a peer dependency, and specify `processor` to `'vue'` for the plugin:
 
 ```sh
 pnpm i -D @vue/language-core
+```
+
+```ts
+{
+  plugins: [dts({ processor: 'vue' })]
+}
 ```
 
 ## FAQ
@@ -342,9 +348,16 @@ export interface Resolver {
 
 export interface PluginOptions {
   /**
+   * Specify which (program) process you prefer.
+   *
+   * @default 'ts'
+   */
+  processor?: 'vue' | 'ts',
+
+  /**
    * Specify root directory.
    *
-   * Defaults to the 'root' of the Vite config, or `process.cwd()` if using Rollup.
+   * The default is to use the root provided by the scaffold; if none is provided, it defaults to `process.cwd()`.
    */
   root?: string,
 

@@ -19,6 +19,9 @@ importers:
       '@eslint/js':
         specifier: ^9.31.0
         version: 9.31.0
+      '@microsoft/api-extractor':
+        specifier: ^7.52.9
+        version: 7.52.9(@types/node@22.16.5)
       '@rspack/core':
         specifier: ^1.3.9
         version: 1.4.10
@@ -49,6 +52,9 @@ importers:
       '@vexip-ui/scripts':
         specifier: ^1.4.1
         version: 1.4.1
+      '@vue/language-core':
+        specifier: ^3.0.4
+        version: 3.0.4(typescript@5.8.3)
       conventional-changelog-cli:
         specifier: ^5.0.0
         version: 5.0.0(conventional-commits-filter@5.0.0)
@@ -329,6 +335,9 @@ importers:
 
   packages/unplugin-dts:
     dependencies:
+      '@microsoft/api-extractor':
+        specifier: '>=7'
+        version: 7.52.9(@types/node@22.16.5)
       '@rollup/pluginutils':
         specifier: ^5.1.4
         version: 5.2.0(rollup@4.45.1)
@@ -338,6 +347,9 @@ importers:
       '@volar/typescript':
         specifier: ^2.4.17
         version: 2.4.20
+      '@vue/language-core':
+        specifier: ~3.0.1
+        version: 3.0.3(typescript@5.8.3)
       compare-versions:
         specifier: ^6.1.1
         version: 6.1.1
@@ -374,13 +386,6 @@ importers:
       webpack:
         specifier: ^4 || ^5
         version: 5.100.2(esbuild@0.25.8)
-    devDependencies:
-      '@microsoft/api-extractor':
-        specifier: ^7.52.5
-        version: 7.52.9(@types/node@22.16.5)
-      '@vue/language-core':
-        specifier: ~3.0.1
-        version: 3.0.3(typescript@5.8.3)
 
   packages/vite-plugin-dts:
     dependencies:
@@ -1736,6 +1741,14 @@ packages:
 
   '@vue/language-core@3.0.3':
     resolution: {integrity: sha512-I9wY0ULMN9tMSua+2C7g+ez1cIziVMUzIHlDYGSl2rtru3Eh4sXj95vZ+4GBuXwwPnEmYfzSApVbXiVbI8V5Gg==}
+    peerDependencies:
+      typescript: '*'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@vue/language-core@3.0.4':
+    resolution: {integrity: sha512-BvueED4LfBCSNH66eeUQk37MQCb7hjdezzGgxniM0LbriW53AJIyLorgshAtStmjfsAuOCcTl/c1b+nz/ye8xQ==}
     peerDependencies:
       typescript: '*'
     peerDependenciesMeta:
@@ -6567,10 +6580,6 @@ snapshots:
       '@typescript-eslint/types': 8.38.0
       eslint-visitor-keys: 4.2.1
 
-  '@valibot/to-json-schema@1.0.0(valibot@1.0.0(typescript@5.7.3))':
-    dependencies:
-      valibot: 1.0.0(typescript@5.7.3)
-
   '@valibot/to-json-schema@1.0.0(valibot@1.0.0(typescript@5.8.3))':
     dependencies:
       valibot: 1.0.0(typescript@5.8.3)
@@ -6864,6 +6873,19 @@ snapshots:
     optional: true
 
   '@vue/language-core@3.0.3(typescript@5.8.3)':
+    dependencies:
+      '@volar/language-core': 2.4.20
+      '@vue/compiler-dom': 3.5.18
+      '@vue/compiler-vue2': 2.7.16
+      '@vue/shared': 3.5.18
+      alien-signals: 2.0.5
+      muggle-string: 0.4.1
+      path-browserify: 1.0.1
+      picomatch: 4.0.3
+    optionalDependencies:
+      typescript: 5.8.3
+
+  '@vue/language-core@3.0.4(typescript@5.8.3)':
     dependencies:
       '@volar/language-core': 2.4.20
       '@vue/compiler-dom': 3.5.18
@@ -9779,7 +9801,7 @@ snapshots:
   rolldown@1.0.0-beta.8(typescript@5.7.3):
     dependencies:
       '@oxc-project/types': 0.65.0
-      '@valibot/to-json-schema': 1.0.0(valibot@1.0.0(typescript@5.7.3))
+      '@valibot/to-json-schema': 1.0.0(valibot@1.0.0(typescript@5.8.3))
       ansis: 3.17.0
       valibot: 1.0.0(typescript@5.7.3)
     optionalDependencies:

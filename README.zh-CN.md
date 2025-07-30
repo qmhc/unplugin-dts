@@ -245,10 +245,16 @@ pnpm i -D @microsoft/api-extractor
 }
 ```
 
-还有一点，如果你正在一个 **Vue 项目** 中使用它，你需要安装 `@vue/language-core` 作为一个必要依赖：
+还有一点，如果你正在一个 **Vue 项目** 中使用它，你需要安装 `@vue/language-core` 作为一个必要依赖，并修改 `processor` 为 `'vue'`：
 
 ```sh
 pnpm i -D @vue/language-core
+```
+
+```ts
+{
+  plugins: [dts({ processor: 'vue' })]
+}
 ```
 
 ## 常见问题
@@ -359,9 +365,16 @@ export interface Resolver {
 
 export interface PluginOptions {
   /**
+   * 指定使用哪种处理程序
+   *
+   * @default 'ts'
+   */
+  processor?: 'vue' | 'ts',
+
+  /**
    * 指定根目录
    *
-   * 默认为 Vite 配置的 'root'，使用 Rollup 为 `process.cwd()`
+   * 默认使用脚手架提供的根目录，如果没提供则为 `process.cwd()`
    */
   root?: string,
 

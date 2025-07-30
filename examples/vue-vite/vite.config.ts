@@ -34,6 +34,7 @@ export default defineConfig({
   plugins: [
     // @ts-ignore
     dts({
+      processor: 'vue',
       copyDtsFiles: true,
       outDirs: [
         'dist',

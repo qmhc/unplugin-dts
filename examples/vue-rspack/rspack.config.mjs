@@ -73,6 +73,7 @@ export default defineConfig({
   mode: 'production',
   plugins: [
     dts({
+      processor: 'vue',
       outDirs: ['dist', 'types'],
       // include: ['src/index.ts'],
       exclude: ['src/ignore'],

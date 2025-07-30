@@ -26,6 +26,7 @@ export default defineConfig({
   ],
   plugins: [
     dts({
+      processor: 'vue',
       outDirs: ['dist', 'types'],
       // include: ['src/index.ts'],
       exclude: ['src/ignore'],

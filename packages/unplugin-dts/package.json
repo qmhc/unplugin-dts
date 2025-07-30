@@ -128,10 +128,6 @@
     "magic-string": "^0.30.17",
     "unplugin": "^2.3.2"
   },
-  "devDependencies": {
-    "@microsoft/api-extractor": "^7.52.5",
-    "@vue/language-core": "~3.0.1"
-  },
   "peerDependencies": {
     "@microsoft/api-extractor": ">=7",
     "@rspack/core": "^1",

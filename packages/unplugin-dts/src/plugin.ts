@@ -28,6 +28,7 @@ const logPrefix = cyan(`[${pluginName}]`)
 
 export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__PURE__ */ (options = {}, meta) => {
   const {
+    processor = 'ts',
     tsconfigPath,
     staticImport = false,
     clearPureImport = true,
@@ -190,6 +191,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
       }
 
       runtime = await Runtime.toInstance({
+        processor,
         root,
         outDirs: options.outDirs ?? outDirs,
         entryRoot,
