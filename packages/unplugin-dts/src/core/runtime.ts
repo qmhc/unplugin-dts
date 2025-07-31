@@ -211,7 +211,10 @@ export class Runtime {
       [...ensureArray(content?.raw.include ?? []), ...ensureArray(content?.raw.files ?? [])],
       '**/*',
     )
-    const exclude = computeGlobs(options.exclude, content?.raw.exclude, 'node_modules/**')
+    const exclude = [
+      ...computeGlobs(options.exclude, content?.raw.exclude, 'node_modules/**'),
+      ...outDirs.map(outDir => normalizeGlob(outDir)),
+    ]
     const filter = createFilter(include, exclude, { resolve: root })
 
     const rootNames = [
