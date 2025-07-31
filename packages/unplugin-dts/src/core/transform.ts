@@ -245,15 +245,18 @@ export function transformCode(options: {
         node.body.statements.some(isVLSNode)
       ) {
         s.remove(node.pos, node.end)
-      } else if (ts.isStringLiteral(node.name)) {
-        const libName = toLibName(node.name.text)
+      } else {
+        let libName = ''
+        if (ts.isStringLiteral(node.name)) {
+          libName = toLibName(node.name.text)
 
-        if (libName !== node.name.text) {
-          s.update(node.name.pos, node.name.end, ` '${libName}'`)
+          if (libName !== node.name.text) {
+            s.update(node.name.pos, node.name.end, ` '${libName}'`)
+          }
         }
 
         if (
-          !libName.startsWith('.') &&
+          (!libName || !libName.startsWith('.')) &&
           node.modifiers?.[0] &&
           node.modifiers[0].kind === ts.SyntaxKind.DeclareKeyword &&
           !node.body.statements.some(
