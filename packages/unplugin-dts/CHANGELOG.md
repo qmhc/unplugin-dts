@@ -1,3 +1,18 @@
+# [1.0.0-beta.6](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.5...v1.0.0-beta.6) (2025-07-31)
+
+
+### Bug Fixes
+
+* should collect indentifier module declaration ([79e5440](https://github.com/qmhc/vite-plugin-dts/commit/79e544069a6d0f0c19137b2b10b703d78a678311)), closes [#419](https://github.com/qmhc/vite-plugin-dts/issues/419)
+* should exclude outDirs by default ([6d953f4](https://github.com/qmhc/vite-plugin-dts/commit/6d953f44149462dc477356a3fdda14ee117b8d37)), closes [#415](https://github.com/qmhc/vite-plugin-dts/issues/415)
+
+
+### Features
+
+* add afterBootstrap hook ([b191904](https://github.com/qmhc/vite-plugin-dts/commit/b191904ad77cbe0a6bd98bee06276ca1392af9df)), closes [#326](https://github.com/qmhc/vite-plugin-dts/issues/326)
+
+
+
 # [1.0.0-beta.5](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.4...v1.0.0-beta.5) (2025-07-30)
 
 
