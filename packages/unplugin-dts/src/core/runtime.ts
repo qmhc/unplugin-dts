@@ -430,6 +430,7 @@ export class Runtime {
       outDirs,
       logger,
       outputFiles,
+      transformedFiles,
       rootFiles,
       root,
       publicRoot,
@@ -605,10 +606,14 @@ export class Runtime {
       const pkgPath = tryGetPkgPath(root)
   
       let pkg: any
-  
       try {
         pkg = pkgPath && existsSync(pkgPath) ? JSON.parse(await readFile(pkgPath, 'utf-8')) : {}
       } catch (e) {}
+
+      const transformed = new Set(Array.from(transformedFiles).map(file => {
+        file = relative(entryRoot, file)
+        return `${file.replace(tjsRE, '')}.d.${getJsExtPrefix(file)}ts`
+      }))
   
       const entryNames = Object.keys(entries)
       const types = findTypesPath(pkg.publishConfig, pkg)
@@ -632,7 +637,7 @@ export class Runtime {
           ? cleanPath(resolve(outDir, tsToDts(name)), emittedFiles)
           : typesPath
   
-        if (existsSync(entryDtsPath)) continue
+        if (transformed.has(relative(outDir, entryDtsPath)) && existsSync(entryDtsPath)) continue
   
         const sourceEntry = normalizePath(
           cleanPath(resolve(outDir, relative(entryRoot, tsToDts(entries[name]))), emittedFiles),
@@ -750,6 +755,8 @@ export class Runtime {
         )
       })
     }
+
+    this.clearTransformedFiles()
   
     return emittedFiles
   }

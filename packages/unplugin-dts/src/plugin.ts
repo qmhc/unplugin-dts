@@ -272,9 +272,11 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
       }
     },
     async writeBundle() {
-      runtime.clearTransformedFiles()
-
-      if (isDev || !runtime || bundled) return
+      if (isDev || !runtime || bundled) {
+        runtime?.clearTransformedFiles()
+        handleDebug('skip writeBundle')
+        return
+      }
 
       bundled = true
       handleDebug('begin writeBundle')
