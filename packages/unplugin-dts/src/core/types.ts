@@ -32,7 +32,7 @@ export interface CreateRuntimeOptions {
   /**
    * Specify root directory.
    *
-   * Defaults to the 'root' of the Vite config, or `process.cwd()` if using Rollup.
+   * The default is to use the root provided by the scaffold; if none is provided, it defaults to `process.cwd()`.
    */
   root: string,
   /**
@@ -40,7 +40,7 @@ export interface CreateRuntimeOptions {
    *
    * Can be an array to output to multiple directories.
    *
-   * Defaults to 'build.outDir' of the Vite config, or `outDir` of tsconfig.json if using Rollup.
+   * The default is to use the out directory provided by the scaffold.
    */
   outDirs?: string | string[],
   /**

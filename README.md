@@ -362,7 +362,7 @@ export interface PluginOptions {
    *
    * Can be an array to output to multiple directories.
    *
-   * Defaults to 'build.outDir' of the Vite config, or `outDir` of tsconfig.json if using Rollup.
+   * The default is to use the out directory provided by the scaffold.
    */
   outDir?: string | string[],
 

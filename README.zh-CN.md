@@ -379,7 +379,7 @@ export interface PluginOptions {
    *
    * 可以指定一个数组来输出到多个目录中
    *
-   * 默认为 Vite 配置的 'build.outDir'，使用 Rollup 时为 tsconfig.json 的 `outDir`
+   * 默认使用脚手架提供的输出目录
    */
   outDir?: string | string[],
 

@@ -120,6 +120,10 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
       indexName = `${(fileName || 'index')}.d.ts`
     }
 
+    if (!options.outDirs && compiler.options.output.path) {
+      outDirs = [ensureAbsolute(compiler.options.output.path, root)]
+    }
+
     handleDebug('parse webpack(rspack) config')
   }
 
