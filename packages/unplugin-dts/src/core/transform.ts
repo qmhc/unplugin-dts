@@ -164,6 +164,17 @@ export function transformCode(options: {
 
         s.remove(node.pos, node.end)
         ++importCount
+      } else if (
+        ts.isStringLiteral(node.moduleSpecifier) &&
+        node.importClause.namedBindings && ts.isNamespaceImport(node.importClause.namedBindings)
+      ) {
+        const libName = toLibName(node.moduleSpecifier.text)
+
+        if (libName !== node.moduleSpecifier.text) {
+          s.update(node.moduleSpecifier.pos, node.moduleSpecifier.end, ` '${libName}'`)
+        }
+
+        ++importCount
       }
 
       return false
