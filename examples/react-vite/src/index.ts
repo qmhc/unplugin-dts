@@ -1,5 +1,6 @@
-import { HelloWorld } from './components/HelloWorld'
 import * as Components from '@/components'
+
+import { HelloWorld } from './components/HelloWorld'
 
 import type { ReactDOM as MyReactDOM } from 'react'
 

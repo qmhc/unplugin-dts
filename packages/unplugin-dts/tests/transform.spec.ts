@@ -219,8 +219,8 @@ describe('transform tests', () => {
       {
         description: 'alias in namespace import',
         content: 'import * as Components from "@/test/components";\n',
-        output: "import * as Components from '../test/components';\n"
-      }
+        output: "import * as Components from '../test/components';\n",
+      },
     ]
 
     tests.forEach(({ description, content, filePath, aliases, output }) => {
