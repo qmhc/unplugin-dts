@@ -216,6 +216,11 @@ describe('transform tests', () => {
         content: 'import { nothingReal } from "someDependency";',
         output: "import { nothingReal } from 'someDependency';\n",
       },
+      {
+        description: 'alias in namespace import',
+        content: 'import * as Components from "@/test/components";\n',
+        output: "import * as Components from '../test/components';\n",
+      },
     ]
 
     tests.forEach(({ description, content, filePath, aliases, output }) => {

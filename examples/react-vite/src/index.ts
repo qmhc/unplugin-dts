@@ -1,8 +1,11 @@
+import * as Components from '@/components'
+
 import { HelloWorld } from './components/HelloWorld'
 
 import type { ReactDOM as MyReactDOM } from 'react'
 
 export { HelloWorld }
+export { Components }
 export { App } from './App'
 export { useCount } from '@/hooks/useCount'
 export * from './modules'
