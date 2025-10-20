@@ -126,6 +126,7 @@
     "kolorist": "^1.8.0",
     "local-pkg": "^1.1.1",
     "magic-string": "^0.30.17",
+    "svelte2tsx": "~0.7.33",
     "unplugin": "^2.3.2"
   },
   "peerDependencies": {
