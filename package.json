@@ -43,7 +43,7 @@
     "@vexip-ui/eslint-config": "^1.2.1",
     "@vexip-ui/prettier-config": "^1.0.0",
     "@vexip-ui/scripts": "^1.4.1",
-    "@vue/language-core": "^3.0.4",
+    "@vue/language-core": "^3.1.5",
     "conventional-changelog-cli": "^5.0.0",
     "eslint": "^9.31.0",
     "execa": "^9.5.2",

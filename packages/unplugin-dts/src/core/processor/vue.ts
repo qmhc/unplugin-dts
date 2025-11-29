@@ -8,7 +8,7 @@ import { proxyCreateProgram } from '@volar/typescript'
 import ts from 'typescript'
 import { slash } from '../utils'
 
-export { createParsedCommandLine }
+export { createParsedCommandLine } from './ts'
 
 export const createProgram = proxyCreateProgram(ts, ts.createProgram, (ts, options) => {
   const { configFilePath } = options.options
