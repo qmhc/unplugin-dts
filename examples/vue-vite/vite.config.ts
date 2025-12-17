@@ -34,6 +34,7 @@ export default defineConfig({
   plugins: [
     // @ts-ignore
     dts({
+      tsconfigPath: resolve('./tsconfig/tsconfig.app.json'),
       processor: 'vue',
       copyDtsFiles: true,
       outDirs: [
