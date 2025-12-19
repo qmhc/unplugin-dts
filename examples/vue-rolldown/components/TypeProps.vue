@@ -5,7 +5,7 @@
 <script setup lang="ts">
 export type Props = {
   color: 'blue' | 'red' | 'purple' | 'yellow',
-  array?: { foo: number }[]
+  array?: { foo: number }[],
 }
 
 withDefaults(defineProps<Props>(), {
@@ -15,7 +15,7 @@ withDefaults(defineProps<Props>(), {
 interface Events {
   (e: 'cellClick', evt: string): void,
   (e: 'dragSelectUpdate', values: number[]): void,
-  (e: 'headerClick', column: unknown): void
+  (e: 'headerClick', column: unknown): void,
 }
 
 defineEmits<Events>()

@@ -6,7 +6,7 @@ export const dy: import('./dynamic').DynamicImportType = { a: 1 }
 export const dy1: import('./dynamic2').DynamicImportType2 = { a: 1 }
 
 export interface Test extends TestBase {
-  count: number
+  count: number,
 }
 
 export { testFn } from './comment'
@@ -29,6 +29,6 @@ export type * from './modules'
 declare module '@/test' {
   interface TestBase {
     name: string,
-    mail?: string
+    mail?: string,
   }
 }

@@ -4,7 +4,7 @@ import type { Resolver } from './types'
 
 interface SourceMap {
   sources: string[],
-  mappings: string
+  mappings: string,
 }
 
 const vueRE = /\.vue$/

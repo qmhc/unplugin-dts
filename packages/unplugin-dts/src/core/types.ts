@@ -10,7 +10,7 @@ import type { Resolver } from './resolvers'
 export interface Logger {
   info: (msg: string) => void,
   warn: (msg: string) => void,
-  error: (msg: string) => void
+  error: (msg: string) => void,
 }
 
 export type BundleConfig = Omit<
@@ -18,9 +18,12 @@ export type BundleConfig = Omit<
   'extends' | 'projectFolder' | 'mainEntryPointFilePath' | 'bundledPackages'
 >
 
-export type AliasOptions = {
-  find: string | RegExp,
-  replacement: string }[] | { [find: string]: string }
+export type AliasOptions =
+  | {
+    find: string | RegExp,
+    replacement: string,
+  }[]
+  | { [find: string]: string }
 
 export interface CreateRuntimeOptions {
   /**
@@ -104,7 +107,7 @@ export interface CreateRuntimeOptions {
   entries?: Record<string, string>,
   libName?: string,
   indexName?: string,
-  logger?: Logger
+  logger?: Logger,
 }
 
 export interface EmitOptions {
@@ -162,37 +165,39 @@ export interface EmitOptions {
    *
    * @default false
    */
-  bundleTypes?: boolean | {
-    /**
-     * Override the config of `@microsoft/api-extractor`.
-     *
-     * @default {}
-     * @see https://api-extractor.com/pages/setup/configure_api_report/
-     */
-    extractorConfig?: BundleConfig,
-    /**
-     * Bundled packages for `@microsoft/api-extractor`.
-     *
-     * @default []
-     * @see https://api-extractor.com/pages/configs/api-extractor_json/#bundledpackages
-     */
-    bundledPackages?: string[],
-    /**
-     * Override the invoke options of `@microsoft/api-extractor`.
-     *
-     * @default {}
-     * @see https://api-extractor.com/pages/setup/invoking/#invoking-from-a-build-script
-     */
-    invokeOptions?: IExtractorInvokeOptions,
-    /**
-     * Specify a real api-extractor config file path.
-     * 
-     * When invoking, the configuration will be merged in the order: internal config, file config, `extractorConfig`.
-     * 
-     * @default './api-extractor.json'
-     */
-    configPath?: string
-  },
+  bundleTypes?:
+    | boolean
+    | {
+      /**
+         * Override the config of `@microsoft/api-extractor`.
+         *
+         * @default {}
+         * @see https://api-extractor.com/pages/setup/configure_api_report/
+         */
+      extractorConfig?: BundleConfig,
+      /**
+         * Bundled packages for `@microsoft/api-extractor`.
+         *
+         * @default []
+         * @see https://api-extractor.com/pages/configs/api-extractor_json/#bundledpackages
+         */
+      bundledPackages?: string[],
+      /**
+         * Override the invoke options of `@microsoft/api-extractor`.
+         *
+         * @default {}
+         * @see https://api-extractor.com/pages/setup/invoking/#invoking-from-a-build-script
+         */
+      invokeOptions?: IExtractorInvokeOptions,
+      /**
+         * Specify a real api-extractor config file path.
+         *
+         * When invoking, the configuration will be merged in the order: internal config, file config, `extractorConfig`.
+         *
+         * @default './api-extractor.json'
+         */
+      configPath?: string,
+    },
   /**
    * Hook called prior to writing each declaration file.
    *
@@ -210,7 +215,7 @@ export interface EmitOptions {
     | false
     | {
       filePath?: string,
-      content?: string
+      content?: string,
     }
   >,
   /**
@@ -221,5 +226,5 @@ export interface EmitOptions {
   afterRollup?: (result: ExtractorResult) => MaybePromise<void>,
 
   // Should be internal for custom
-  logPrefix?: string
+  logPrefix?: string,
 }

@@ -12,10 +12,7 @@ import type {
 export type { Resolver, RollupConfig, Runtime }
 
 export interface PluginOptions
-  extends Omit<
-    Partial<CreateRuntimeOptions>,
-      'entries' | 'libName' | 'indexName' | 'logger'
-  >,
+  extends Omit<Partial<CreateRuntimeOptions>, 'entries' | 'libName' | 'indexName' | 'logger'>,
   Omit<EmitOptions, 'logPrefix'> {
   /**
    * Whether to emit declaration files only.
@@ -46,5 +43,5 @@ export interface PluginOptions
    *
    * @default () => {}
    */
-  afterBuild?: (emittedFiles: Map<string, string>) => MaybePromise<void>
+  afterBuild?: (emittedFiles: Map<string, string>) => MaybePromise<void>,
 }

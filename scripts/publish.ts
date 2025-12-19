@@ -6,7 +6,7 @@ const args = minimist<{
   d?: boolean,
   dry?: boolean,
   t?: string,
-  tag?: string
+  tag?: string,
 }>(process.argv.slice(2))
 
 const ref = args._[0] as string

@@ -29,7 +29,7 @@ export default defineConfig({
       // aliasesExclude: [/^@components/],
       staticImport: true,
       // insertTypesEntry: true,
-      bundleTypes: true,
+      // bundleTypes: true,
       // declarationOnly: true,
       compilerOptions: {
         declarationMap: true,

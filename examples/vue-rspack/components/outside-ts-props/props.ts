@@ -1,3 +1,3 @@
 export type BaseProps = {
-  title: string
+  title: string,
 }
