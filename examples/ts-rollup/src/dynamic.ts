@@ -1,3 +1,3 @@
 export interface DynamicImportType {
-  a: number
+  a: number,
 }

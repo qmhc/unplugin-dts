@@ -119,7 +119,10 @@ export class Runtime {
   readonly filter: (id: string) => boolean
   readonly rebuildProgram: () => void
 
-  protected constructor(options: CreateRuntimeOptions, { createParsedCommandLine, createProgram }: ProgramProcessor) {
+  protected constructor(
+    options: CreateRuntimeOptions,
+    { createParsedCommandLine, createProgram }: ProgramProcessor,
+  ) {
     const {
       root,
       tsconfigPath,
@@ -194,9 +197,7 @@ export class Runtime {
       defaultGlob: string | string[],
     ) => {
       if (rootGlobs?.length) {
-        return ensureArray(rootGlobs).map(glob =>
-          normalizeGlob(resolveConfigDir(glob, '.')),
-        )
+        return ensureArray(rootGlobs).map(glob => normalizeGlob(resolveConfigDir(glob, '.')))
       }
 
       // TS globs are relative to tsconfig dir; plugin filter globs are relative to `root`.
@@ -290,7 +291,6 @@ export class Runtime {
     for (const file of rootNames) {
       rootFiles.add(file)
     }
-
 
     this.root = root
     this.publicRoot = publicRoot
@@ -389,7 +389,7 @@ export class Runtime {
 
       let outputs: {
         path: string,
-        content: string
+        content: string,
       }[]
 
       if (Array.isArray(result)) {
@@ -406,7 +406,10 @@ export class Runtime {
       }
 
       for (const { path, content } of outputs) {
-        outputFiles.set(resolve(publicRoot, relative(outDir, ensureAbsolute(path, outDir))), content)
+        outputFiles.set(
+          resolve(publicRoot, relative(outDir, ensureAbsolute(path, outDir))),
+          content,
+        )
       }
     } else {
       const sourceFile = this.program.getSourceFile(id)
@@ -415,7 +418,10 @@ export class Runtime {
         const { emitSkipped, diagnostics } = this.program.emit(
           sourceFile,
           (name, text) => {
-            outputFiles.set(resolve(publicRoot, relative(outDir, ensureAbsolute(name, outDir))), text)
+            outputFiles.set(
+              resolve(publicRoot, relative(outDir, ensureAbsolute(name, outDir))),
+              text,
+            )
           },
           undefined,
           true,
@@ -528,7 +534,10 @@ export class Runtime {
         this.program.emit(
           sourceFile,
           (name, text) => {
-            outputFiles.set(resolve(publicRoot, relative(outDir, ensureAbsolute(name, outDir))), text)
+            outputFiles.set(
+              resolve(publicRoot, relative(outDir, ensureAbsolute(name, outDir))),
+              text,
+            )
           },
           undefined,
           true,

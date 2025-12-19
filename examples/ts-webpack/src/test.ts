@@ -1,5 +1,5 @@
 export interface TestBase {
-  name: string
+  name: string,
 }
 
 /**
@@ -7,7 +7,7 @@ export interface TestBase {
  */
 export interface Component {
   name: string,
-  type: string
+  type: string,
 }
 
 export const test: TestBase = {
@@ -17,7 +17,7 @@ export const test: TestBase = {
 export const CONSTANT = ['one', 'two'] as const
 
 export interface WithConstant {
-  constant: (typeof CONSTANT)[number]
+  constant: (typeof CONSTANT)[number],
 }
 
 export function method(arg: string) {
@@ -25,7 +25,7 @@ export function method(arg: string) {
 }
 
 export interface FnMap {
-  [key: string]: () => void
+  [key: string]: () => void,
 }
 
 export class ParametersTest<T extends FnMap> {

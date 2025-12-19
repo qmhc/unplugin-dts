@@ -1,7 +1,7 @@
 import { useCount } from '@/hooks/useCount'
 
 interface Props {
-  count?: number
+  count?: number,
 }
 
 export function HelloWorld(props: Props) {
@@ -9,8 +9,9 @@ export function HelloWorld(props: Props) {
 
   return (
     <div className={'hello-world'}>
-      <button onClick={() => setCount((count) => count + 1)}>
-        {'count is '}{count}
+      <button onClick={() => setCount(count => count + 1)}>
+        {'count is '}
+        {count}
       </button>
     </div>
   )

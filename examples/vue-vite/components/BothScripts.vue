@@ -31,7 +31,7 @@ defineExpose({ inc })
 export interface BothScriptsProps {
   /** comment */
   tag: string,
-  count: number
+  count: number,
 }
 
 export default {
@@ -41,11 +41,7 @@ export default {
 </script>
 
 <template>
-  <component
-    :is="tag"
-    class="both-scripts"
-    @click="emit('click', $event)"
-  >
+  <component :is="tag" class="both-scripts" @click="emit('click', $event)">
     <slot></slot>
   </component>
 </template>

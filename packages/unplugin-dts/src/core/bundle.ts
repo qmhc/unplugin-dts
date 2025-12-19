@@ -1,6 +1,10 @@
 import { ensureAbsolute, mergeObjects, resolve, tryGetPackageInfo, tryGetPkgPath } from './utils'
 
-import type { ExtractorLogLevel, IConfigFile, IExtractorInvokeOptions } from '@microsoft/api-extractor'
+import type {
+  ExtractorLogLevel,
+  IConfigFile,
+  IExtractorInvokeOptions,
+} from '@microsoft/api-extractor'
 import type { BundleConfig } from './types'
 
 export interface BundleDtsOptions {
@@ -14,13 +18,15 @@ export interface BundleDtsOptions {
   libFolder?: string,
   extractorConfig?: BundleConfig,
   bundledPackages?: string[],
-  invokeOptions?: IExtractorInvokeOptions
+  invokeOptions?: IExtractorInvokeOptions,
 }
 
 let hasExtractor: boolean | undefined
 
 export function getHasExtractor() {
-  return typeof hasExtractor !== 'undefined' ? hasExtractor : (hasExtractor = !!tryGetPackageInfo('@microsoft/api-extractor'))
+  return typeof hasExtractor !== 'undefined'
+    ? hasExtractor
+    : (hasExtractor = !!tryGetPackageInfo('@microsoft/api-extractor'))
 }
 
 const dtsRE = /\.d\.(m|c)?tsx?$/

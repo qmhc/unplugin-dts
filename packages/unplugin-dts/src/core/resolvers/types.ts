@@ -3,7 +3,7 @@ import type { MaybePromise } from '../utils'
 
 export interface ResolverTransformOutput {
   path: string,
-  content: string
+  content: string,
 }
 
 export interface Resolver {
@@ -28,10 +28,13 @@ export interface Resolver {
     root: string,
     outDir: string,
     host: ts.CompilerHost,
-    program: ts.Program
-  }) => MaybePromise<ResolverTransformOutput[] | {
-    outputs: ResolverTransformOutput[],
-    emitSkipped?: boolean,
-    diagnostics?: readonly ts.Diagnostic[]
-  }>
+    program: ts.Program,
+  }) => MaybePromise<
+    | ResolverTransformOutput[]
+    | {
+      outputs: ResolverTransformOutput[],
+      emitSkipped?: boolean,
+      diagnostics?: readonly ts.Diagnostic[],
+    }
+  >,
 }

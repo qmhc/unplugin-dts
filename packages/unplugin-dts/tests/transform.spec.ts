@@ -121,7 +121,7 @@ describe('transform tests', () => {
       content: string,
       output: string,
       filePath?: string,
-      aliases?: Alias[]
+      aliases?: Alias[],
     }> = [
       {
         description: 'type import alias at root level',

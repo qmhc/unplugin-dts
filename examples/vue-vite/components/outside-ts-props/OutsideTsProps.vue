@@ -3,7 +3,7 @@ import type { BaseProps } from './props'
 
 type Props = {
   title: BaseProps['title'],
-  msg?: string
+  msg?: string,
 }
 
 withDefaults(defineProps<Props>(), {

@@ -111,7 +111,7 @@ export function transformCode(options: {
   aliasesExclude: (string | RegExp)[],
   staticImport: boolean,
   clearPureImport: boolean,
-  cleanVueFileName: boolean
+  cleanVueFileName: boolean,
 }) {
   const s = new MagicString(options.content)
   const ast = ts.createSourceFile('a.ts', options.content, ts.ScriptTarget.Latest)
@@ -166,7 +166,8 @@ export function transformCode(options: {
         ++importCount
       } else if (
         ts.isStringLiteral(node.moduleSpecifier) &&
-        node.importClause.namedBindings && ts.isNamespaceImport(node.importClause.namedBindings)
+        node.importClause.namedBindings &&
+        ts.isNamespaceImport(node.importClause.namedBindings)
       ) {
         const libName = toLibName(node.moduleSpecifier.text)
 

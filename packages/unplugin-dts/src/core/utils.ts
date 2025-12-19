@@ -91,7 +91,7 @@ export function mergeObjects<T extends Record<string, any>, U extends Record<str
 ) {
   const loop: Array<{
     source: Record<string, any>,
-    target: Record<string, any>
+    target: Record<string, any>,
     // merged: Record<string, any>
   }> = [
     {
@@ -255,7 +255,7 @@ export function getTsConfig(
     compilerOptions: CompilerOptions,
     include?: string[],
     exclude?: string[],
-    extends?: string | string[]
+    extends?: string | string[],
   } = {
     ...baseConfig,
     compilerOptions: {},
@@ -524,7 +524,7 @@ export function tryGetPackageInfo(name: string) {
       version: string | undefined,
       rootPath: string,
       packageJsonPath: string,
-      packageJson: any
+      packageJson: any,
     }
   } catch (e) {}
 }
