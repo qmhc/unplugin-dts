@@ -200,12 +200,24 @@ export class Runtime {
         return ensureArray(rootGlobs).map(glob => normalizeGlob(resolveConfigDir(glob, '.')))
       }
 
-      const relativeRoot = configPath
-        ? normalizePath(relative(root, dirname(configPath)).replace(globSignRE, '\\$&'))
-        : '.'
+      // TS globs are relative to tsconfig dir; plugin filter globs are relative to `root`.
+      const relativeRoot = configPath ? normalizePath(relative(root, dirname(configPath))) : '.'
+
+      const relativeRootGlob = relativeRoot === '.' ? '.' : relativeRoot.replace(globSignRE, '\\$&')
+
+      const resolveTsGlobToRoot = (glob: string) => {
+        glob = normalizePath(glob)
+
+        // Keep absolute globs as-is (POSIX + `C:/...`).
+        if (glob.startsWith('/') || /^[a-zA-Z]:\//.test(glob)) return glob
+
+        if (relativeRootGlob === '.') return glob
+
+        return `${relativeRootGlob}/${glob}`
+      }
 
       return ensureArray(tsGlobs?.length ? tsGlobs : defaultGlob).map(glob =>
-        normalizeGlob(resolveConfigDir(glob, relativeRoot)),
+        normalizeGlob(resolveTsGlobToRoot(resolveConfigDir(glob, '.'))),
       )
     }
 
@@ -340,7 +352,14 @@ export class Runtime {
   }
 
   async transform(id: string, code: string) {
-    const { publicRoot, outDirs, resolvers, rootFiles, outputFiles, transformedFiles } = this
+    const {
+      publicRoot,
+      outDirs,
+      resolvers,
+      rootFiles,
+      outputFiles,
+      transformedFiles,
+    } = this
 
     let resolver: Resolver | undefined
     id = normalizePath(id).split('?')[0]
@@ -575,41 +594,34 @@ export class Runtime {
       },
     )
 
-    await runParallel(
-      cpus().length,
-      Array.from(mapFiles.entries()),
-      async ([filePath, content]) => {
-        const baseDir = dirname(filePath)
+    await runParallel(cpus().length, Array.from(mapFiles.entries()), async ([filePath, content]) => {
+      const baseDir = dirname(filePath)
 
-        filePath = resolve(
-          outDir,
-          relative(entryRoot, cleanVueFileName ? filePath.replace('.vue.d.ts', '.d.ts') : filePath),
-        )
+      filePath = resolve(
+        outDir,
+        relative(entryRoot, cleanVueFileName ? filePath.replace('.vue.d.ts', '.d.ts') : filePath),
+      )
 
-        try {
-          const sourceMap: { sources: string[], mappings: string } = JSON.parse(content)
+      try {
+        const sourceMap: { sources: string[], mappings: string } = JSON.parse(content)
 
-          sourceMap.sources = sourceMap.sources.map(source => {
-            return normalizePath(
-              relative(
-                dirname(filePath),
-                resolve(currentDir, relative(publicRoot, baseDir), source),
-              ),
-            )
-          })
+        sourceMap.sources = sourceMap.sources.map(source => {
+          return normalizePath(
+            relative(dirname(filePath), resolve(currentDir, relative(publicRoot, baseDir), source)),
+          )
+        })
 
-          if (prependMappings.has(filePath)) {
-            sourceMap.mappings = `${prependMappings.get(filePath)}${sourceMap.mappings}`
-          }
-
-          content = JSON.stringify(sourceMap)
-        } catch (e) {
-          logger.warn(`${logPrefix} ${yellow('Processing source map fail:')} ${filePath}`)
+        if (prependMappings.has(filePath)) {
+          sourceMap.mappings = `${prependMappings.get(filePath)}${sourceMap.mappings}`
         }
 
-        await writeOutput(filePath, content, outDir)
-      },
-    )
+        content = JSON.stringify(sourceMap)
+      } catch (e) {
+        logger.warn(`${logPrefix} ${yellow('Processing source map fail:')} ${filePath}`)
+      }
+
+      await writeOutput(filePath, content, outDir)
+    })
 
     handleDebug('write output')
 
@@ -621,12 +633,10 @@ export class Runtime {
         pkg = pkgPath && existsSync(pkgPath) ? JSON.parse(await readFile(pkgPath, 'utf-8')) : {}
       } catch (e) {}
 
-      const transformed = new Set(
-        Array.from(transformedFiles).map(file => {
-          file = relative(entryRoot, file)
-          return `${file.replace(tjsRE, '')}.d.${getJsExtPrefix(file)}ts`
-        }),
-      )
+      const transformed = new Set(Array.from(transformedFiles).map(file => {
+        file = relative(entryRoot, file)
+        return `${file.replace(tjsRE, '')}.d.${getJsExtPrefix(file)}ts`
+      }))
 
       const entryNames = Object.keys(entries)
       const types = findTypesPath(pkg.publishConfig, pkg)

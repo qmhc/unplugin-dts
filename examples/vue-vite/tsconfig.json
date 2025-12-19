@@ -1,31 +1,7 @@
 {
   // test comment
-  "compilerOptions": {
-    "target": "esnext",
-    "module": "esnext",
-    "moduleResolution": "node",
-    "importHelpers": true,
-    "outDir": "dist",
-    "strict": true,
-    "jsx": "preserve",
-    "jsxImportSource": "vue",
-    "allowJs": true,
-    "sourceMap": true,
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "experimentalDecorators": true,
-    "types": [
-      "node",
-      "vite/client"
-    ],
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"],
-      "@components/*": ["./src/components/*"],
-      "$alias/*": ["./alias/*"]
-    },
-    "lib": ["esnext", "dom"]
-  },
-  "include": ["src", "components", "alias", "*.d.ts"]
+  "files": [],
+  "references": [
+    { "path": "./tsconfig/tsconfig.app.json" }
+  ]
 }
