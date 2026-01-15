@@ -231,6 +231,72 @@ If you start with official Vite template, you should specify the `tsconfigPath`:
 }
 ```
 
+## Output Directory Configuration
+
+By default, declaration files are generated with `.d.ts` extension. You can customize the output directory and specify a module format to generate `.d.cts` (CommonJS) or `.d.mts` (ES Module) files.
+
+### Basic Usage
+
+```ts
+// Single directory (default .d.ts)
+{
+  plugins: [dts({ outDirs: 'dist' })]
+}
+
+// Multiple directories (all .d.ts)
+{
+  plugins: [dts({ outDirs: ['dist', 'types'] })]
+}
+```
+
+### Module Format Configuration
+
+Use the `OutDirConfig` object to specify a `moduleFormat` for each output directory:
+
+```ts
+// Generate .d.mts files for ESM
+{
+  plugins: [dts({ outDirs: { dir: 'dist', moduleFormat: 'esm' } })]
+}
+
+// Generate .d.cts files for CommonJS
+{
+  plugins: [dts({ outDirs: { dir: 'dist', moduleFormat: 'cjs' } })]
+}
+```
+
+The `moduleFormat` property accepts the following values:
+
+| Value                 | Declaration Extension | Source Map Extension |
+| --------------------- | --------------------- | -------------------- |
+| `undefined` (default) | `.d.ts`               | `.d.ts.map`          |
+| `'esm'`               | `.d.mts`              | `.d.mts.map`         |
+| `'cjs'`               | `.d.cts`              | `.d.cts.map`         |
+
+### Mixed Configuration
+
+You can mix string paths and object configurations in an array. This is useful when you need to support both CommonJS and ES Module consumers from a single build:
+
+```ts
+{
+  plugins: [
+    dts({
+      outDirs: [
+        'dist',                                    // default .d.ts
+        { dir: 'dist/cjs', moduleFormat: 'cjs' },  // .d.cts
+        { dir: 'dist/esm', moduleFormat: 'esm' },  // .d.mts
+      ],
+    }),
+  ]
+}
+```
+
+This configuration will generate:
+
+- `dist/*.d.ts` - Standard declaration files
+- `dist/cjs/*.d.cts` - CommonJS declaration files
+- `dist/esm/*.d.mts` - ES Module declaration files
+
 One more, if you are using it in a **Vue project**, you need to install `@vue/language-core` as a peer dependency for the plugin:
 
 ```sh

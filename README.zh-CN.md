@@ -319,6 +319,15 @@ import type { IExtractorConfigPrepareOptions, IExtractorInvokeOptions } from '@m
 
 type MaybePromise<T> = T | Promise<T>
 
+export type ModuleFormat = 'cjs' | 'esm'
+
+export interface OutDirConfig {
+  dir: string,
+  moduleFormat?: ModuleFormat,
+}
+
+export type OutDirsOption = string | OutDirConfig | (string | OutDirConfig)[]
+
 export type BundleConfig = Omit<
   IExtractorConfigPrepareOptions['configObject'],
   'extends' | 'projectFolder' | 'mainEntryPointFilePath' | 'bundledPackages'
@@ -377,11 +386,20 @@ export interface PluginOptions {
   /**
    * 指定输出目录
    *
-   * 可以指定一个数组来输出到多个目录中
+   * 可以是字符串、字符串数组、包含 `dir` 和 `moduleFormat` 的对象，或混合类型的数组
+   *
+   * 使用对象格式并设置 `moduleFormat: 'cjs'` 时，生成 `.d.cts` 文件
+   * 使用对象格式并设置 `moduleFormat: 'esm'` 时，生成 `.d.mts` 文件
    *
    * 默认使用脚手架提供的输出目录
+   *
+   * @example
+   * outDir: 'dist'
+   * outDir: ['dist', 'types']
+   * outDir: { dir: 'dist', moduleFormat: 'esm' }
+   * outDir: ['dist', { dir: 'dist-cjs', moduleFormat: 'cjs' }]
    */
-  outDir?: string | string[],
+  outDir?: OutDirsOption,
 
   /**
    * 用于手动设置入口文件的根路径（通常用在 monorepo）
@@ -522,9 +540,9 @@ export interface PluginOptions {
     invokeOptions?: IExtractorInvokeOptions,
     /**
      * 指定一个真实的 api-extractor 配置文件路径
-     * 
+     *
      * 调用时将会按照内部配置、文件配置、`extractorConfig` 的顺序合并
-     * 
+     *
      * @default './api-extractor.json'
      */
     configPath?: string

@@ -16,6 +16,7 @@ import { getPackageInfoSync, resolveModule } from 'local-pkg'
 
 import type { CompilerOptions } from 'typescript'
 import type { Alias } from 'vite'
+import type { ModuleFormat, NormalizedOutDir, OutDirConfig, OutDirsOption } from './types'
 
 export type MaybePromise<T> = T | Promise<T>
 
@@ -43,6 +44,20 @@ export function getJsExtPrefix(file: string) {
 
 export function tsToDts(path: string) {
   return `${path.replace(tsRE, '')}.d.ts`
+}
+
+/**
+ * 将 TypeScript 文件路径转换为指定后缀的声明文件路径
+ *
+ * @param path - TypeScript 文件路径
+ * @param dtsExtension - 目标声明文件后缀
+ * @returns 转换后的声明文件路径
+ */
+export function tsToDtsWithExtension(
+  path: string,
+  dtsExtension: '.d.ts' | '.d.cts' | '.d.mts' = '.d.ts',
+): string {
+  return `${path.replace(tsRE, '')}${dtsExtension}`
 }
 
 const windowsSlashRE = /\\+/g
@@ -527,4 +542,190 @@ export function tryGetPackageInfo(name: string) {
       packageJson: any,
     }
   } catch (e) {}
+}
+
+/**
+ * 根据模块格式获取声明文件后缀
+ *
+ * @param moduleFormat - 模块格式 ('cjs' | 'esm' | undefined)
+ * @returns 对应的声明文件后缀
+ */
+export function getDtsExtension(
+  moduleFormat: ModuleFormat | undefined,
+): '.d.ts' | '.d.cts' | '.d.mts' {
+  switch (moduleFormat) {
+    case 'cjs':
+      return '.d.cts'
+    case 'esm':
+      return '.d.mts'
+    default:
+      return '.d.ts'
+  }
+}
+
+/**
+ * 根据模块格式获取 Source Map 文件后缀
+ *
+ * @param moduleFormat - 模块格式 ('cjs' | 'esm' | undefined)
+ * @returns 对应的 Source Map 文件后缀
+ */
+export function getMapExtension(
+  moduleFormat: ModuleFormat | undefined,
+): '.d.ts.map' | '.d.cts.map' | '.d.mts.map' {
+  switch (moduleFormat) {
+    case 'cjs':
+      return '.d.cts.map'
+    case 'esm':
+      return '.d.mts.map'
+    default:
+      return '.d.ts.map'
+  }
+}
+
+/**
+ * 判断是否为 OutDirConfig 对象
+ */
+function isOutDirConfig(value: unknown): value is OutDirConfig {
+  return isNativeObj(value) && typeof (value as OutDirConfig).dir === 'string'
+}
+
+/**
+ * 标准化单个输出目录配置
+ */
+function normalizeOutDirItem(item: string | OutDirConfig, root: string): NormalizedOutDir {
+  if (typeof item === 'string') {
+    return {
+      dir: ensureAbsolute(item, root),
+      moduleFormat: undefined,
+      dtsExtension: '.d.ts',
+      mapExtension: '.d.ts.map',
+    }
+  }
+
+  const moduleFormat = item.moduleFormat
+  return {
+    dir: ensureAbsolute(item.dir || '', root),
+    moduleFormat,
+    dtsExtension: getDtsExtension(moduleFormat),
+    mapExtension: getMapExtension(moduleFormat),
+  }
+}
+
+/**
+ * 标准化 outDirs 配置
+ *
+ * 将各种输入格式标准化为 NormalizedOutDir[]
+ *
+ * @param outDirs - 用户配置的 outDirs
+ * @param root - 项目根目录
+ * @param defaultDir - 默认输出目录
+ * @returns 标准化后的输出目录配置数组
+ */
+export function normalizeOutDirs(
+  outDirs: OutDirsOption | undefined,
+  root: string,
+  defaultDir: string,
+): NormalizedOutDir[] {
+  // 未提供配置时使用默认目录
+  if (outDirs === undefined || outDirs === null) {
+    return [normalizeOutDirItem(defaultDir, root)]
+  }
+
+  // 单个字符串
+  if (typeof outDirs === 'string') {
+    return [normalizeOutDirItem(outDirs, root)]
+  }
+
+  // 单个 OutDirConfig 对象
+  if (isOutDirConfig(outDirs)) {
+    return [normalizeOutDirItem(outDirs, root)]
+  }
+
+  // 数组（可能是 string[]、OutDirConfig[] 或混合数组）
+  if (Array.isArray(outDirs)) {
+    if (outDirs.length === 0) {
+      return [normalizeOutDirItem(defaultDir, root)]
+    }
+    return outDirs.map(item => normalizeOutDirItem(item, root))
+  }
+
+  // 兜底：使用默认目录
+  return [normalizeOutDirItem(defaultDir, root)]
+}
+
+/**
+ * 转换文件路径的后缀
+ *
+ * 将 .d.ts 路径转换为目标后缀（.d.cts 或 .d.mts）
+ *
+ * @param filePath - 原始文件路径
+ * @param targetExtension - 目标后缀
+ * @returns 转换后的文件路径
+ */
+export function transformDtsPath(
+  filePath: string,
+  targetExtension: '.d.ts' | '.d.cts' | '.d.mts',
+): string {
+  // 如果目标后缀是 .d.ts，无需转换
+  if (targetExtension === '.d.ts') {
+    return filePath
+  }
+
+  // 处理 .d.ts.map 文件
+  if (filePath.endsWith('.d.ts.map')) {
+    const mapExtension = targetExtension === '.d.cts' ? '.d.cts.map' : '.d.mts.map'
+    return filePath.slice(0, -9) + mapExtension
+  }
+
+  // 处理 .d.ts 文件
+  if (filePath.endsWith('.d.ts')) {
+    return filePath.slice(0, -5) + targetExtension
+  }
+
+  // 其他情况返回原路径
+  return filePath
+}
+
+/**
+ * 清理 Vue 声明文件名，移除 .vue 部分
+ *
+ * 支持所有声明文件后缀：
+ * - .vue.d.ts → .d.ts
+ * - .vue.d.cts → .d.cts
+ * - .vue.d.mts → .d.mts
+ *
+ * @param filePath - 原始文件路径
+ * @returns 清理后的文件路径
+ */
+export function cleanVueDtsFileName(filePath: string): string {
+  return filePath
+    .replace('.vue.d.ts', '.d.ts')
+    .replace('.vue.d.cts', '.d.cts')
+    .replace('.vue.d.mts', '.d.mts')
+}
+
+/**
+ * 转换声明文件内容中的 sourceMappingURL 注释后缀
+ *
+ * 将 `//# sourceMappingURL=xxx.d.ts.map` 转换为对应的后缀
+ *
+ * @param content - 声明文件内容
+ * @param targetMapExtension - 目标 source map 后缀
+ * @returns 转换后的文件内容
+ */
+export function transformSourceMappingURL(
+  content: string,
+  targetMapExtension: '.d.ts.map' | '.d.cts.map' | '.d.mts.map',
+): string {
+  // 如果目标后缀是 .d.ts.map，无需转换
+  if (targetMapExtension === '.d.ts.map') {
+    return content
+  }
+
+  // 匹配 sourceMappingURL 注释中的 .d.ts.map 后缀
+  // 格式: //# sourceMappingURL=filename.d.ts.map
+  return content.replace(
+    /\/\/# sourceMappingURL=(.+)\.d\.ts\.map$/m,
+    `//# sourceMappingURL=$1${targetMapExtension}`,
+  )
 }

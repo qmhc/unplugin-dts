@@ -302,6 +302,15 @@ import type { IExtractorConfigPrepareOptions, IExtractorInvokeOptions } from '@m
 
 type MaybePromise<T> = T | Promise<T>
 
+export type ModuleFormat = 'cjs' | 'esm'
+
+export interface OutDirConfig {
+  dir: string,
+  moduleFormat?: ModuleFormat,
+}
+
+export type OutDirsOption = string | OutDirConfig | (string | OutDirConfig)[]
+
 export type BundleConfig = Omit<
   IExtractorConfigPrepareOptions['configObject'],
   'extends' | 'projectFolder' | 'mainEntryPointFilePath' | 'bundledPackages'
@@ -360,11 +369,20 @@ export interface PluginOptions {
   /**
    * Output directory for declaration files.
    *
-   * Can be an array to output to multiple directories.
+   * Can be a string, array of strings, object with `dir` and `moduleFormat`, or array of mixed types.
+   *
+   * When using object format with `moduleFormat: 'cjs'`, generates `.d.cts` files.
+   * When using object format with `moduleFormat: 'esm'`, generates `.d.mts` files.
    *
    * The default is to use the out directory provided by the scaffold.
+   *
+   * @example
+   * outDir: 'dist'
+   * outDir: ['dist', 'types']
+   * outDir: { dir: 'dist', moduleFormat: 'esm' }
+   * outDir: ['dist', { dir: 'dist-cjs', moduleFormat: 'cjs' }]
    */
-  outDir?: string | string[],
+  outDir?: OutDirsOption,
 
   /**
    * Override root path of entry files (useful in monorepos).
@@ -505,9 +523,9 @@ export interface PluginOptions {
     invokeOptions?: IExtractorInvokeOptions,
     /**
      * Specify a real api-extractor config file path.
-     * 
+     *
      * When invoking, the configuration will be merged in the order: internal config, file config, `extractorConfig`.
-     * 
+     *
      * @default './api-extractor.json'
      */
     configPath?: string

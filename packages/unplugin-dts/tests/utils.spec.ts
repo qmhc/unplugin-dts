@@ -6,16 +6,21 @@ import {
   base64VLQEncode,
   ensureAbsolute,
   ensureArray,
+  getDtsExtension,
+  getMapExtension,
   getTsLibFolder,
   isNativeObj,
   isPromise,
   isRegExp,
   mergeObjects,
+  normalizeOutDirs,
   normalizePath,
   parseTsAliases,
   queryPublicPath,
   resolveConfigDir,
   toCapitalCase,
+  transformDtsPath,
+  transformSourceMappingURL,
   unwrapPromise,
 } from '../src/core/utils'
 
@@ -260,5 +265,227 @@ describe('utils tests', () => {
     expect(getTsLibFolder()).toMatch(/node_modules\/typescript$/)
 
     expect(existsSync(getTsLibFolder() || '')).toBe(true)
+  })
+
+  it('test: getDtsExtension', () => {
+    // 测试 cjs 格式
+    expect(getDtsExtension('cjs')).toBe('.d.cts')
+    // 测试 esm 格式
+    expect(getDtsExtension('esm')).toBe('.d.mts')
+    // 测试 undefined（默认）
+    expect(getDtsExtension(undefined)).toBe('.d.ts')
+  })
+
+  it('test: getMapExtension', () => {
+    // 测试 cjs 格式
+    expect(getMapExtension('cjs')).toBe('.d.cts.map')
+    // 测试 esm 格式
+    expect(getMapExtension('esm')).toBe('.d.mts.map')
+    // 测试 undefined（默认）
+    expect(getMapExtension(undefined)).toBe('.d.ts.map')
+  })
+
+  it('test: normalizeOutDirs', () => {
+    const root = '/project'
+    const defaultDir = 'dist'
+
+    // 测试 undefined 输入
+    expect(normalizeOutDirs(undefined, root, defaultDir)).toEqual([
+      {
+        dir: '/project/dist',
+        moduleFormat: undefined,
+        dtsExtension: '.d.ts',
+        mapExtension: '.d.ts.map',
+      },
+    ])
+
+    // 测试单个字符串
+    expect(normalizeOutDirs('types', root, defaultDir)).toEqual([
+      {
+        dir: '/project/types',
+        moduleFormat: undefined,
+        dtsExtension: '.d.ts',
+        mapExtension: '.d.ts.map',
+      },
+    ])
+
+    // 测试字符串数组
+    expect(normalizeOutDirs(['dist', 'types'], root, defaultDir)).toEqual([
+      {
+        dir: '/project/dist',
+        moduleFormat: undefined,
+        dtsExtension: '.d.ts',
+        mapExtension: '.d.ts.map',
+      },
+      {
+        dir: '/project/types',
+        moduleFormat: undefined,
+        dtsExtension: '.d.ts',
+        mapExtension: '.d.ts.map',
+      },
+    ])
+
+    // 测试单个 OutDirConfig 对象
+    expect(normalizeOutDirs({ dir: 'dist-cjs', moduleFormat: 'cjs' }, root, defaultDir)).toEqual([
+      {
+        dir: '/project/dist-cjs',
+        moduleFormat: 'cjs',
+        dtsExtension: '.d.cts',
+        mapExtension: '.d.cts.map',
+      },
+    ])
+
+    // 测试 OutDirConfig 数组
+    expect(
+      normalizeOutDirs(
+        [
+          { dir: 'dist-cjs', moduleFormat: 'cjs' },
+          { dir: 'dist-esm', moduleFormat: 'esm' },
+        ],
+        root,
+        defaultDir,
+      ),
+    ).toEqual([
+      {
+        dir: '/project/dist-cjs',
+        moduleFormat: 'cjs',
+        dtsExtension: '.d.cts',
+        mapExtension: '.d.cts.map',
+      },
+      {
+        dir: '/project/dist-esm',
+        moduleFormat: 'esm',
+        dtsExtension: '.d.mts',
+        mapExtension: '.d.mts.map',
+      },
+    ])
+
+    // 测试混合数组
+    expect(
+      normalizeOutDirs(
+        [
+          'dist',
+          { dir: 'dist-cjs', moduleFormat: 'cjs' },
+          { dir: 'dist-esm', moduleFormat: 'esm' },
+        ],
+        root,
+        defaultDir,
+      ),
+    ).toEqual([
+      {
+        dir: '/project/dist',
+        moduleFormat: undefined,
+        dtsExtension: '.d.ts',
+        mapExtension: '.d.ts.map',
+      },
+      {
+        dir: '/project/dist-cjs',
+        moduleFormat: 'cjs',
+        dtsExtension: '.d.cts',
+        mapExtension: '.d.cts.map',
+      },
+      {
+        dir: '/project/dist-esm',
+        moduleFormat: 'esm',
+        dtsExtension: '.d.mts',
+        mapExtension: '.d.mts.map',
+      },
+    ])
+
+    // 测试空数组
+    expect(normalizeOutDirs([], root, defaultDir)).toEqual([
+      {
+        dir: '/project/dist',
+        moduleFormat: undefined,
+        dtsExtension: '.d.ts',
+        mapExtension: '.d.ts.map',
+      },
+    ])
+
+    // 测试 OutDirConfig 不带 moduleFormat
+    expect(normalizeOutDirs({ dir: 'types' }, root, defaultDir)).toEqual([
+      {
+        dir: '/project/types',
+        moduleFormat: undefined,
+        dtsExtension: '.d.ts',
+        mapExtension: '.d.ts.map',
+      },
+    ])
+  })
+
+  it('test: transformDtsPath', () => {
+    // 测试 .d.ts 文件转换为 .d.cts
+    expect(transformDtsPath('/project/dist/index.d.ts', '.d.cts')).toBe('/project/dist/index.d.cts')
+    // 测试 .d.ts 文件转换为 .d.mts
+    expect(transformDtsPath('/project/dist/index.d.ts', '.d.mts')).toBe('/project/dist/index.d.mts')
+    // 测试 .d.ts 文件保持不变
+    expect(transformDtsPath('/project/dist/index.d.ts', '.d.ts')).toBe('/project/dist/index.d.ts')
+
+    // 测试 .d.ts.map 文件转换为 .d.cts.map
+    expect(transformDtsPath('/project/dist/index.d.ts.map', '.d.cts')).toBe(
+      '/project/dist/index.d.cts.map',
+    )
+    // 测试 .d.ts.map 文件转换为 .d.mts.map
+    expect(transformDtsPath('/project/dist/index.d.ts.map', '.d.mts')).toBe(
+      '/project/dist/index.d.mts.map',
+    )
+    // 测试 .d.ts.map 文件保持不变
+    expect(transformDtsPath('/project/dist/index.d.ts.map', '.d.ts')).toBe(
+      '/project/dist/index.d.ts.map',
+    )
+
+    // 测试非 .d.ts 文件保持不变
+    expect(transformDtsPath('/project/dist/index.js', '.d.cts')).toBe('/project/dist/index.js')
+    expect(transformDtsPath('/project/dist/index.ts', '.d.mts')).toBe('/project/dist/index.ts')
+  })
+
+  it('test: transformSourceMappingURL', () => {
+    const contentWithSourceMap = `export declare const foo: string;
+//# sourceMappingURL=index.d.ts.map`
+
+    // 测试转换为 .d.cts.map
+    expect(transformSourceMappingURL(contentWithSourceMap, '.d.cts.map')).toBe(
+      `export declare const foo: string;
+//# sourceMappingURL=index.d.cts.map`,
+    )
+
+    // 测试转换为 .d.mts.map
+    expect(transformSourceMappingURL(contentWithSourceMap, '.d.mts.map')).toBe(
+      `export declare const foo: string;
+//# sourceMappingURL=index.d.mts.map`,
+    )
+
+    // 测试保持 .d.ts.map 不变
+    expect(transformSourceMappingURL(contentWithSourceMap, '.d.ts.map')).toBe(contentWithSourceMap)
+
+    // 测试没有 sourceMappingURL 的内容
+    const contentWithoutSourceMap = `export declare const foo: string;`
+    expect(transformSourceMappingURL(contentWithoutSourceMap, '.d.cts.map')).toBe(
+      contentWithoutSourceMap,
+    )
+
+    // 测试复杂文件名
+    const contentWithComplexName = `export declare const foo: string;
+//# sourceMappingURL=my-component.d.ts.map`
+    expect(transformSourceMappingURL(contentWithComplexName, '.d.mts.map')).toBe(
+      `export declare const foo: string;
+//# sourceMappingURL=my-component.d.mts.map`,
+    )
+
+    // 测试多行内容
+    const multiLineContent = `import { default as data } from './data.json';
+export interface Test {
+    count: number;
+}
+export { testFn } from './comment';
+//# sourceMappingURL=index.d.ts.map`
+    expect(transformSourceMappingURL(multiLineContent, '.d.cts.map')).toBe(
+      `import { default as data } from './data.json';
+export interface Test {
+    count: number;
+}
+export { testFn } from './comment';
+//# sourceMappingURL=index.d.cts.map`,
+    )
   })
 })

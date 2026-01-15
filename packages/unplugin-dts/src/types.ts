@@ -4,12 +4,15 @@ import type {
   CreateRuntimeOptions,
   EmitOptions,
   MaybePromise,
+  ModuleFormat,
+  OutDirConfig,
+  OutDirsOption,
   Resolver,
   RollupConfig,
   Runtime,
 } from './core'
 
-export type { Resolver, RollupConfig, Runtime }
+export type { ModuleFormat, OutDirConfig, OutDirsOption, Resolver, RollupConfig, Runtime }
 
 export interface PluginOptions
   extends Omit<Partial<CreateRuntimeOptions>, 'entries' | 'libName' | 'indexName' | 'logger'>,

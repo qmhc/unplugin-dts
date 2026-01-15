@@ -7,6 +7,43 @@ import type {
 import type { MaybePromise } from './utils'
 import type { Resolver } from './resolvers'
 
+/**
+ * Module format type
+ * - 'cjs': CommonJS format, generates .d.cts files
+ * - 'esm': ES Module format, generates .d.mts files
+ */
+export type ModuleFormat = 'cjs' | 'esm'
+
+export interface OutDirConfig {
+  /**
+   * Output directory path
+   */
+  dir: string,
+  /**
+   * Module format, determines declaration file extension
+   * - 'cjs': generates .d.cts files
+   * - 'esm': generates .d.mts files
+   * - undefined: generates .d.ts files (default)
+   */
+  moduleFormat?: ModuleFormat,
+}
+
+export type OutDirsOption = string | OutDirConfig | (string | OutDirConfig)[]
+
+/**
+ * @internal
+ */
+export interface NormalizedOutDir {
+  /** Absolute path */
+  dir: string,
+  /** Module format */
+  moduleFormat: ModuleFormat | undefined,
+  /** Declaration file extension */
+  dtsExtension: '.d.ts' | '.d.cts' | '.d.mts',
+  /** Source map file extension */
+  mapExtension: '.d.ts.map' | '.d.cts.map' | '.d.mts.map',
+}
+
 export interface Logger {
   info: (msg: string) => void,
   warn: (msg: string) => void,
@@ -41,11 +78,32 @@ export interface CreateRuntimeOptions {
   /**
    * Output directory for declaration files.
    *
-   * Can be an array to output to multiple directories.
+   * Can be a string, array of strings, OutDirConfig object, or array of OutDirConfig objects.
+   * Supports mixed arrays containing both strings and OutDirConfig objects.
+   *
+   * @example
+   * // Simple string
+   * outDirs: 'dist'
+   *
+   * @example
+   * // String array (backward compatible)
+   * outDirs: ['dist', 'types']
+   *
+   * @example
+   * // Object configuration
+   * outDirs: { dir: 'dist', moduleFormat: 'esm' }
+   *
+   * @example
+   * // Mixed array
+   * outDirs: [
+   *   'dist',  // default .d.ts
+   *   { dir: 'dist-cjs', moduleFormat: 'cjs' },  // .d.cts
+   *   { dir: 'dist-esm', moduleFormat: 'esm' }   // .d.mts
+   * ]
    *
    * The default is to use the out directory provided by the scaffold.
    */
-  outDirs?: string | string[],
+  outDirs?: OutDirsOption,
   /**
    * Override root path of entry files (useful in monorepos).
    *

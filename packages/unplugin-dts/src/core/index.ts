@@ -2,4 +2,13 @@ export { Runtime } from './runtime'
 export * from './resolvers'
 export * from './utils'
 
-export type { Logger, BundleConfig as RollupConfig, AliasOptions, CreateRuntimeOptions, EmitOptions } from './types'
+export type {
+  AliasOptions,
+  BundleConfig as RollupConfig,
+  CreateRuntimeOptions,
+  EmitOptions,
+  Logger,
+  ModuleFormat,
+  OutDirConfig,
+  OutDirsOption,
+} from './types'
