@@ -32,7 +32,7 @@
     "@commitlint/cli": "^19.8.0",
     "@commitlint/types": "^19.8.0",
     "@eslint/js": "^9.31.0",
-    "@microsoft/api-extractor": "^7.52.9",
+    "@microsoft/api-extractor": "^7.57.0",
     "@rspack/core": "^1.3.9",
     "@types/debug": "^4.1.12",
     "@types/minimist": "^1.2.5",
@@ -66,5 +66,11 @@
     "vite": "^6.3.3",
     "vitest": "^3.1.2",
     "webpack": "^5.100.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@microsoft/api-extractor@<7.57.6": "7.57.6",
+      "minimatch@>=10.0.0 <10.2.3": "10.2.4"
+    }
   }
 }
