@@ -289,10 +289,13 @@ describe('utils tests', () => {
     const root = '/project'
     const defaultDir = 'dist'
 
+    // 辅助函数：动态计算期望路径，兼容 Windows 盘符
+    const expectedDir = (...parts: string[]) => normalizePath(resolve(...parts))
+
     // 测试 undefined 输入
     expect(normalizeOutDirs(undefined, root, defaultDir)).toEqual([
       {
-        dir: '/project/dist',
+        dir: expectedDir(root, defaultDir),
         moduleFormat: undefined,
         dtsExtension: '.d.ts',
         mapExtension: '.d.ts.map',
@@ -302,7 +305,7 @@ describe('utils tests', () => {
     // 测试单个字符串
     expect(normalizeOutDirs('types', root, defaultDir)).toEqual([
       {
-        dir: '/project/types',
+        dir: expectedDir(root, 'types'),
         moduleFormat: undefined,
         dtsExtension: '.d.ts',
         mapExtension: '.d.ts.map',
@@ -312,13 +315,13 @@ describe('utils tests', () => {
     // 测试字符串数组
     expect(normalizeOutDirs(['dist', 'types'], root, defaultDir)).toEqual([
       {
-        dir: '/project/dist',
+        dir: expectedDir(root, 'dist'),
         moduleFormat: undefined,
         dtsExtension: '.d.ts',
         mapExtension: '.d.ts.map',
       },
       {
-        dir: '/project/types',
+        dir: expectedDir(root, 'types'),
         moduleFormat: undefined,
         dtsExtension: '.d.ts',
         mapExtension: '.d.ts.map',
@@ -328,7 +331,7 @@ describe('utils tests', () => {
     // 测试单个 OutDirConfig 对象
     expect(normalizeOutDirs({ dir: 'dist-cjs', moduleFormat: 'cjs' }, root, defaultDir)).toEqual([
       {
-        dir: '/project/dist-cjs',
+        dir: expectedDir(root, 'dist-cjs'),
         moduleFormat: 'cjs',
         dtsExtension: '.d.cts',
         mapExtension: '.d.cts.map',
@@ -347,13 +350,13 @@ describe('utils tests', () => {
       ),
     ).toEqual([
       {
-        dir: '/project/dist-cjs',
+        dir: expectedDir(root, 'dist-cjs'),
         moduleFormat: 'cjs',
         dtsExtension: '.d.cts',
         mapExtension: '.d.cts.map',
       },
       {
-        dir: '/project/dist-esm',
+        dir: expectedDir(root, 'dist-esm'),
         moduleFormat: 'esm',
         dtsExtension: '.d.mts',
         mapExtension: '.d.mts.map',
@@ -373,19 +376,19 @@ describe('utils tests', () => {
       ),
     ).toEqual([
       {
-        dir: '/project/dist',
+        dir: expectedDir(root, 'dist'),
         moduleFormat: undefined,
         dtsExtension: '.d.ts',
         mapExtension: '.d.ts.map',
       },
       {
-        dir: '/project/dist-cjs',
+        dir: expectedDir(root, 'dist-cjs'),
         moduleFormat: 'cjs',
         dtsExtension: '.d.cts',
         mapExtension: '.d.cts.map',
       },
       {
-        dir: '/project/dist-esm',
+        dir: expectedDir(root, 'dist-esm'),
         moduleFormat: 'esm',
         dtsExtension: '.d.mts',
         mapExtension: '.d.mts.map',
@@ -395,7 +398,7 @@ describe('utils tests', () => {
     // 测试空数组
     expect(normalizeOutDirs([], root, defaultDir)).toEqual([
       {
-        dir: '/project/dist',
+        dir: expectedDir(root, defaultDir),
         moduleFormat: undefined,
         dtsExtension: '.d.ts',
         mapExtension: '.d.ts.map',
@@ -405,7 +408,7 @@ describe('utils tests', () => {
     // 测试 OutDirConfig 不带 moduleFormat
     expect(normalizeOutDirs({ dir: 'types' }, root, defaultDir)).toEqual([
       {
-        dir: '/project/types',
+        dir: expectedDir(root, 'types'),
         moduleFormat: undefined,
         dtsExtension: '.d.ts',
         mapExtension: '.d.ts.map',
