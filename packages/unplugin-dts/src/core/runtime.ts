@@ -276,7 +276,9 @@ export class Runtime {
       : compilerOptions.composite && compilerOptions.configFilePath
         ? dirname(compilerOptions.configFilePath as string)
         : compare(ts.version, '6.0.0', '>=')
-          ? root
+          ? configPath
+            ? dirname(configPath)
+            : root
           : queryPublicPath(
             program
               .getSourceFiles()
