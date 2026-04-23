@@ -182,18 +182,19 @@ export class Runtime {
 
     const outDirs = normalizeOutDirs(options.outDirs, root, defaultOutDir)
 
-    const {
-      // Here we are using the default value to set the `baseUrl` to the current directory if no value exists. This is
-      // the same behavior as the TS Compiler. See TS source:
-      // https://github.com/microsoft/TypeScript/blob/3386e943215613c40f68ba0b108cda1ddb7faee1/src/compiler/utilities.ts#L6493-L6501
-      baseUrl = compilerOptions.paths ? process.cwd() : undefined,
-      paths,
-    } = compilerOptions
+    const { baseUrl, paths } = compilerOptions
 
-    if (pathsToAliases && baseUrl && paths) {
+    // When `paths` is used without `baseUrl` in tsconfig.json, TypeScript 5.4+
+    // resolves paths relative to the containing directory of tsconfig.json.
+    const resolvedBaseUrl = baseUrl ?? (paths && configPath ? dirname(configPath) : root)
+
+    if (pathsToAliases && resolvedBaseUrl && paths) {
       aliases.push(
         ...parseTsAliases(
-          ensureAbsolute(resolveConfigDir(baseUrl, root), configPath ? dirname(configPath) : root),
+          ensureAbsolute(
+            resolveConfigDir(resolvedBaseUrl, root),
+            configPath ? dirname(configPath) : root,
+          ),
           paths,
         ),
       )
