@@ -1,4 +1,5 @@
-import { basename } from 'node:path'
+import { basename, dirname } from 'node:path'
+import { readdirSync } from 'node:fs'
 
 import ts from 'typescript'
 import { cyan, green, yellow } from 'kolorist'
@@ -18,7 +19,13 @@ import {
   unwrapPromise,
 } from './core'
 
-import type { RolldownPlugin, RollupPlugin, RspackCompiler, UnpluginFactory, WebpackCompiler } from 'unplugin'
+import type {
+  RolldownPlugin,
+  RollupPlugin,
+  RspackCompiler,
+  UnpluginFactory,
+  WebpackCompiler,
+} from 'unplugin'
 import type { Alias } from 'vite'
 import type { PluginOptions } from './types'
 import type { Logger } from './core'
@@ -26,9 +33,12 @@ import type { Logger } from './core'
 const pluginName = 'unplugin:dts'
 const logPrefix = cyan(`[${pluginName}]`)
 
-export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__PURE__ */ (options = {}, meta) => {
+export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__PURE__ */ (
+  options = {},
+  meta,
+) => {
   const {
-    processor = 'ts',
+    processor: userProcessor,
     tsconfigPath,
     staticImport = false,
     clearPureImport = true,
@@ -70,6 +80,26 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
 
   let runtime: Runtime
 
+  function hasVueFilesInDir(dir: string): boolean {
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.endsWith('.vue')) {
+          return true
+        }
+        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          const subEntries = readdirSync(`${dir}/${entry.name}`, { withFileTypes: true })
+          if (subEntries.some(f => f.isFile() && f.name.endsWith('.vue'))) {
+            return true
+          }
+        }
+      }
+      return false
+    } catch {
+      return false
+    }
+  }
+
   function prepareFromCompiler(compiler: WebpackCompiler | RspackCompiler) {
     root = ensureAbsolute(options.root ?? '', compiler.context)
     isDev = compiler.options.mode === 'development'
@@ -98,11 +128,18 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
     const aliasOptions = compiler.options.resolve.alias ?? []
 
     if (Array.isArray(aliasOptions)) {
-      aliases = ensureArray(aliasOptions).filter(alias => alias.alias && alias.alias.length > 0).map(alias => ({ find: alias.name, replacement: Array.isArray(alias.alias) ? alias.alias[0] : alias.alias as string }))
+      aliases = ensureArray(aliasOptions)
+        .filter(alias => alias.alias && alias.alias.length > 0)
+        .map(alias => ({
+          find: alias.name,
+          replacement: Array.isArray(alias.alias) ? alias.alias[0] : (alias.alias as string),
+        }))
     } else {
-      aliases = Object.entries(aliasOptions).filter(([, value]) => value && value.length > 0).map(([key, value]) => {
-        return { find: key, replacement: Array.isArray(value) ? value[0] : value as string }
-      })
+      aliases = Object.entries(aliasOptions)
+        .filter(([, value]) => value && value.length > 0)
+        .map(([key, value]) => {
+          return { find: key, replacement: Array.isArray(value) ? value[0] : (value as string) }
+        })
     }
 
     if (compiler.options.output.library) {
@@ -117,7 +154,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
         fileName = ensureArray(library.name.root)[0]
       }
 
-      indexName = `${(fileName || 'index')}.d.ts`
+      indexName = `${fileName || 'index'}.d.ts`
     }
 
     if (!options.outDirs && compiler.options.output.path) {
@@ -195,6 +232,47 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
         alias.replacement = resolve(alias.replacement)
       }
 
+      let processor = userProcessor
+
+      const hasVueEntries = entries && Object.values(entries).some(e => e.endsWith('.vue'))
+      let hasVueInTsconfig = false
+      let hasVueInInclude = false
+
+      if (!hasVueEntries) {
+        const includeGlobs = ensureArray(include)
+        hasVueInInclude = includeGlobs.some(g => g.includes('.vue'))
+
+        if (!hasVueInInclude) {
+          const configPath = tsconfigPath
+            ? ensureAbsolute(tsconfigPath, root)
+            : ts.findConfigFile(root, ts.sys.fileExists)
+
+          if (configPath) {
+            const config = ts.readJsonConfigFile(configPath, ts.sys.readFile)
+            const raw = ts.parseJsonSourceFileConfigFileContent(
+              config,
+              ts.sys,
+              dirname(configPath),
+              {},
+              configPath,
+            ).raw
+
+            const tsIncludes = [
+              ...ensureArray(raw?.include ?? []),
+              ...ensureArray(raw?.files ?? []),
+            ]
+            hasVueInTsconfig = tsIncludes.some((g: string) => g.includes('.vue'))
+          }
+        }
+      }
+
+      const hasVueFiles =
+        hasVueEntries || hasVueInInclude || hasVueInTsconfig || hasVueFilesInDir(root)
+
+      if (!processor && hasVueFiles) {
+        processor = 'vue'
+      }
+
       runtime = await Runtime.toInstance({
         processor,
         root,
@@ -212,6 +290,14 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
         indexName,
         logger,
       })
+
+      if (userProcessor === 'ts' && hasVueFiles) {
+        logger.warn(
+          `\n${logPrefix} ${yellow(
+            'Detected .vue files but processor is set to "ts". Vue declaration files may not be generated correctly. Consider using processor: "vue".',
+          )}\n`,
+        )
+      }
 
       if (meta.framework !== 'esbuild') {
         for (const file of runtime.getRootFiles()) {
@@ -318,7 +404,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
       apply: 'build',
       config(config) {
         const aliasOptions = config?.resolve?.alias ?? []
-  
+
         if (isNativeObj(aliasOptions)) {
           aliases = Object.entries(aliasOptions).map(([key, value]) => {
             return { find: key, replacement: value }
@@ -327,17 +413,17 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
           aliases = ensureArray(aliasOptions as Alias[]).map(alias => ({ ...alias }))
         }
       },
-  
+
       async configResolved(config) {
         logger = config.logger
         root = ensureAbsolute(options.root ?? '', config.root)
-  
+
         if (config.build.lib) {
           const input =
             typeof config.build.lib.entry === 'string'
               ? [config.build.lib.entry]
               : config.build.lib.entry
-  
+
           if (Array.isArray(input)) {
             entries = input.reduce(
               (prev, current) => {
@@ -349,16 +435,16 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
           } else {
             entries = { ...input }
           }
-  
+
           const filename = config.build.lib.fileName ?? defaultIndex
           const entry =
             typeof config.build.lib.entry === 'string'
               ? config.build.lib.entry
               : Object.keys(config.build.lib.entry)[0]
-  
+
           libName = config.build.lib.name || '_default'
           indexName = typeof filename === 'string' ? filename : filename('es', entry)
-  
+
           if (!dtsRE.test(indexName)) {
             indexName = `${indexName.replace(tjsRE, '')}.d.${getJsExtPrefix(indexName)}ts`
           }
@@ -368,15 +454,15 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
               'You are building a library that may not need to generate declaration files.',
             )}\n`,
           )
-  
+
           libName = '_default'
           indexName = defaultIndex
         }
-  
+
         if (!options.outDirs) {
           outDirs = [ensureAbsolute(config.build.outDir, root)]
         }
-  
+
         handleDebug('parse vite config')
       },
       generateBundle(_, bundle) {
@@ -389,12 +475,12 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
     },
     rollup: rollupHooks,
     rolldown: {
-      ...rollupHooks as RolldownPlugin,
+      ...(rollupHooks as RolldownPlugin),
     },
     webpack(compiler) {
       prepareFromCompiler(compiler)
 
-      compiler.hooks.emit.tap('UnpluginDtsRemoveAssets', (compilation) => {
+      compiler.hooks.emit.tap('UnpluginDtsRemoveAssets', compilation => {
         if (declarationOnly) {
           compilation.assets = {}
         }
@@ -403,13 +489,13 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
     rspack(compiler) {
       prepareFromCompiler(compiler)
 
-      compiler.hooks.thisCompilation.tap('UnpluginDtsRemoveAssets', (compilation) => {
+      compiler.hooks.thisCompilation.tap('UnpluginDtsRemoveAssets', compilation => {
         compilation.hooks.processAssets.tap(
           {
             name: 'UnpluginDtsRemoveAssets',
             stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_OPTIMIZE,
           },
-          (assets) => {
+          assets => {
             if (declarationOnly) {
               for (const filename of Object.keys(assets)) {
                 delete assets[filename]

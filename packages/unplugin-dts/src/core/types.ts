@@ -64,7 +64,10 @@ export type AliasOptions =
 
 export interface CreateRuntimeOptions {
   /**
-   * Specify which (program) process you prefer.
+   * Specify which (program) processor you prefer.
+   *
+   * When not specified, the plugin will automatically detect `.vue` files
+   * and use `'vue'` processor if needed.
    *
    * @default 'ts'
    */
