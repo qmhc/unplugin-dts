@@ -245,11 +245,13 @@ pnpm i -D @microsoft/api-extractor
 }
 ```
 
-还有一点，如果你正在一个 **Vue 项目** 中使用它，你需要安装 `@vue/language-core` 作为一个必要依赖，并修改 `processor` 为 `'vue'`：
+还有一点，如果你正在一个 **Vue 项目** 中使用它，你需要安装 `@vue/language-core` 作为一个必要依赖：
 
 ```sh
 pnpm i -D @vue/language-core
 ```
+
+当你没有显式指定 `processor` 选项时，插件会自动检测 `.vue` 文件并使用 `'vue'` 处理器。不过，仍然建议显式进行设置：
 
 ```ts
 {
@@ -293,6 +295,20 @@ pnpm i -D @vue/language-core
 由于一些局限性，插件依赖最上层的 `tsconfig.json` 来解析需要包含的文件，所以你需要在最上层的 `tsconfig.json` 中指定正确的 `include`，或者通过插件的 `tsconfigPath` 选项指定一个包含了正确 `include` 的配置文件路径，例如在 Vite 初始模板中它是 `tsconfig.app.json`。
 
 可以参考这个 [评论](https://github.com/qmhc/vite-plugin-dts/issues/343#issuecomment-2198111439).
+
+### Vue 组件的 emit 类型被推断为 `any` 或缺失
+
+当使用接口重载形式的 `defineEmits`（例如 `defineEmits<Events>()`）且事件数量超过 8 个时，由于 Vue language tools 中 `__VLS_ConstructorOverloads` 类型的限制，emit 类型可能会被推断为 `[x: string]: any`。
+
+作为变通方案，可以使用对象形式的 `defineEmits`：
+
+```ts
+const emit = defineEmits<{
+  click: [id: number]
+  submit: [value: string]
+  // ...更多事件
+}>()
+```
 
 <details>
   <summary>过时的</summary>

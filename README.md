@@ -245,11 +245,13 @@ If you start with official Vite template, you should specify the `tsconfigPath`:
 }
 ```
 
-One more, if you are using it in a **Vue project**, you need to install `@vue/language-core` as a peer dependency, and specify `processor` to `'vue'` for the plugin:
+One more, if you are using it in a **Vue project**, you need to install `@vue/language-core` as a peer dependency:
 
 ```sh
 pnpm i -D @vue/language-core
 ```
+
+The plugin will automatically detect `.vue` files and use the `'vue'` processor when you don't explicitly specify the `processor` option. However, it is still recommended to explicitly set it:
 
 ```ts
 {
@@ -293,6 +295,20 @@ This is likely due to incorrect configuration of the `include` property in your 
 Due to some limitations, the plugin relies on the top-level `tsconfig.json` to resolve the files to include. Therefore, you need to specify the correct `include` property in the top-level `tsconfig.json`, or you can specify a configuration file path with the correct `include` property using the `tsconfigPath` option of the plugin. For example, in the Vite initial template, it is `tsconfig.app.json`.
 
 You can refer to this [comment](https://github.com/qmhc/vite-plugin-dts/issues/343#issuecomment-2198111439).
+
+### Vue component emit types are inferred as `any` or missing
+
+When using `defineEmits` with interface overloads (e.g. `defineEmits<Events>()`) and the number of emits exceeds 8, Vue language tools may infer emit types as `[x: string]: any` due to a limitation in the `__VLS_ConstructorOverloads` type.
+
+As a workaround, use the object-style `defineEmits` instead:
+
+```ts
+const emit = defineEmits<{
+  click: [id: number]
+  submit: [value: string]
+  // ...more events
+}>()
+```
 
 ## Options
 
