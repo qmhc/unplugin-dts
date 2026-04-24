@@ -312,24 +312,18 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
       handleDebug('create ts program')
       timeRecord += Date.now() - startTime
     },
-    transform: {
-      filter: {
-        id: {
-          include: [tjsRE, /\.vue$/, /\.svelte$/, /\.json$/],
-          exclude: /[\\/]node_modules[\\/]/,
-        },
-      },
-      async handler(code, id) {
-        id = normalizePath(id).split('?')[0]
+    async transform(code, id) {
+      id = normalizePath(id).split('?')[0]
 
-        if (isDev || !runtime) return
+      if (isDev || !runtime) return
 
-        const startTime = Date.now()
+      if (!runtime.matchResolver(id) && !tjsRE.test(id)) return
 
-        await runtime.transform(id, code)
+      const startTime = Date.now()
 
-        timeRecord += Date.now() - startTime
-      },
+      await runtime.transform(id, code)
+
+      timeRecord += Date.now() - startTime
     },
     watchChange(id) {
       id = normalizePath(id)
