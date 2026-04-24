@@ -432,9 +432,6 @@ export class Runtime {
           },
           undefined,
           true,
-          undefined,
-          // @ts-expect-error
-          true,
         )
 
         if (emitSkipped && diagnostics.length > 0) {
