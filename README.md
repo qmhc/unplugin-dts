@@ -288,6 +288,8 @@ For example: `baseUrl: 'src'` is specified and importing from `<root>/src/compon
 
 Currently, you need to avoid the above situation, or use aliases instead (with the `paths` option).
 
+Additionally, when using Vue generic components (`<script setup generic="...">`), the generated `.d.ts` files may contain unresolved internal types (such as `__VLS_EmitsToProps`) from `@vue/language-core`. Since these are not part of Vue's public API, `@microsoft/api-extractor` may fail with "Unable to follow symbol". The plugin automatically replaces these unresolved internal types with `{}` when `bundleTypes` is enabled, so generally no manual action is required.
+
 ### Get module not found errors during build
 
 This is likely due to incorrect configuration of the `include` property in your default `tsconfig.json`.
@@ -470,7 +472,7 @@ export interface PluginOptions {
   /**
    * Whether to transform dynamic imports to static (eg `import('vue').DefineComponent` to `import { DefineComponent } from 'vue'`).
    *
-   * Value is forced to `true` when `rollupTypes` is `true`.
+   * Value is forced to `true` when `bundleTypes` is enabled.
    *
    * @default false
    */

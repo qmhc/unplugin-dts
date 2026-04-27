@@ -198,7 +198,7 @@ export interface EmitOptions {
   /**
    * Whether to transform dynamic imports to static (eg `import('vue').DefineComponent` to `import { DefineComponent } from 'vue'`).
    *
-   * Value is forced to `true` when `rollupTypes` is `true`.
+   * Value is forced to `true` when `bundleTypes` is enabled.
    *
    * @default false
    */

@@ -112,6 +112,7 @@ export function transformCode(options: {
   staticImport: boolean,
   clearPureImport: boolean,
   cleanVueFileName: boolean,
+  replaceUnresolvedVLS?: boolean,
 }) {
   const s = new MagicString(options.content)
   const ast = ts.createSourceFile('a.ts', options.content, ts.ScriptTarget.Latest)
@@ -130,6 +131,39 @@ export function transformCode(options: {
 
   let indexCount = 0
   let importCount = 0
+
+  // Collect locally declared __VLS_ identifiers (type aliases, interfaces, functions, variables)
+  // so we only replace unresolved __VLS_ type references, not those with local declarations.
+  const declaredVLS = new Set<string>()
+  const shouldReplaceVLS = options.replaceUnresolvedVLS ?? false
+
+  if (shouldReplaceVLS) {
+    walkSourceFile(ast, node => {
+      if (
+        ts.isTypeAliasDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        vlsRE.test(`${node.name.escapedText}`)
+      ) {
+        declaredVLS.add(`${node.name.escapedText}`)
+      }
+
+      if (ts.isInterfaceDeclaration(node) && vlsRE.test(`${node.name.escapedText}`)) {
+        declaredVLS.add(`${node.name.escapedText}`)
+      }
+
+      if (ts.isFunctionDeclaration(node) && node.name && vlsRE.test(`${node.name.escapedText}`)) {
+        declaredVLS.add(`${node.name.escapedText}`)
+      }
+
+      if (ts.isVariableStatement(node)) {
+        node.declarationList.declarations.forEach(d => {
+          if (ts.isIdentifier(d.name) && vlsRE.test(`${d.name.escapedText}`)) {
+            declaredVLS.add(`${d.name.escapedText}`)
+          }
+        })
+      }
+    })
+  }
 
   walkSourceFile(ast, (node, parent) => {
     if (ts.isImportDeclaration(node)) {
@@ -178,6 +212,17 @@ export function transformCode(options: {
         ++importCount
       }
 
+      return false
+    }
+
+    if (
+      shouldReplaceVLS &&
+      ts.isTypeReferenceNode(node) &&
+      ts.isIdentifier(node.typeName) &&
+      vlsRE.test(`${node.typeName.escapedText}`) &&
+      !declaredVLS.has(`${node.typeName.escapedText}`)
+    ) {
+      s.update(node.getStart(ast), node.end, '{}')
       return false
     }
 

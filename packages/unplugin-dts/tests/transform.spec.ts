@@ -331,6 +331,49 @@ describe('transform tests', () => {
     ).toEqual("const foo: import('./foo').Foo<import('./baz').Baz[]>")
   })
 
+  it('test: transformCode (replace unresolved __VLS_ types with any when bundling)', () => {
+    const options = (content: string, replaceUnresolvedVLS = true) => ({
+      content,
+      filePath: '',
+      aliases: [],
+      aliasesExclude: [],
+      staticImport: false,
+      clearPureImport: false,
+      cleanVueFileName: false,
+      replaceUnresolvedVLS,
+    })
+
+    // When replaceUnresolvedVLS is true: __VLS_EmitsToProps has no local declaration -> replaced with {}
+    expect(
+      transformCode(
+        options('type T = __VLS_EmitsToProps<__VLS_NormalizeEmits<(evt: "select") => void>>;'),
+      ).content,
+    ).toEqual('type T = {};')
+
+    // When replaceUnresolvedVLS is true: keep declared __VLS_ types, replace undeclared ones
+    expect(
+      transformCode(
+        options(
+          'declare const x: __VLS_PrettifyLocal<{ a: string }> & __VLS_EmitsToProps<any>;\n' +
+            'type __VLS_PrettifyLocal<T> = { [K in keyof T as K]: T[K]; } & {};',
+        ),
+      ).content,
+    ).toEqual(
+      'declare const x: __VLS_PrettifyLocal<{ a: string }> & {};\n' +
+        'type __VLS_PrettifyLocal<T> = { [K in keyof T as K]: T[K]; } & {};',
+    )
+
+    // When replaceUnresolvedVLS is false: keep all __VLS_ types as-is
+    expect(
+      transformCode(
+        options(
+          'type T = __VLS_EmitsToProps<__VLS_NormalizeEmits<(evt: "select") => void>>;',
+          false,
+        ),
+      ).content,
+    ).toEqual('type T = __VLS_EmitsToProps<__VLS_NormalizeEmits<(evt: "select") => void>>;')
+  })
+
   it('test: hasExportDefault', () => {
     expect(hasExportDefault("export { sdk as default } from './sdk'")).toBe(true)
     expect(hasExportDefault("export { foo, sdk as default } from './sdk'")).toBe(true)

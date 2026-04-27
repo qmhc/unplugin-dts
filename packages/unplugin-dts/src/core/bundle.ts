@@ -111,11 +111,33 @@ export async function bundleDtsFiles({
     packageJsonFullPath: tryGetPkgPath(configObjectFullPath),
   })
 
-  return Extractor.invoke(config, {
-    localBuild: false,
-    showVerboseMessages: false,
-    showDiagnostics: false,
-    typescriptCompilerFolder: libFolder,
-    ...invokeOptions,
-  })
+  try {
+    return Extractor.invoke(config, {
+      localBuild: false,
+      showVerboseMessages: false,
+      showDiagnostics: false,
+      typescriptCompilerFolder: libFolder,
+      ...invokeOptions,
+    })
+  } catch (error: any) {
+    if (error?.message?.includes('Unable to follow symbol')) {
+      const symbolMatch = error.message.match(/Unable to follow symbol for "([^"]+)"/)
+      const symbol = symbolMatch ? symbolMatch[1] : 'unknown'
+
+      throw new Error(
+        `[unplugin-dts] Failed to bundle declaration files due to an API Extractor limitation ` +
+          `when analyzing the symbol "${symbol}".\n\n` +
+          `This is usually caused by complex type references from external packages ` +
+          `(such as Vue) that API Extractor cannot resolve.\n\n` +
+          `You can try the following solutions:\n` +
+          `1. Update \`@microsoft/api-extractor\` to the latest version.\n` +
+          `2. Ensure the TypeScript version matches what \`@microsoft/api-extractor\` uses internally.\n` +
+          `3. If the symbol is from an external package, try adding it to \`bundleTypes.bundledPackages\`.\n` +
+          `   For Vue projects, you can try: \`bundledPackages: ['vue']\`.\n\n` +
+          `Original error: ${error.message}`,
+      )
+    }
+
+    throw error
+  }
 }

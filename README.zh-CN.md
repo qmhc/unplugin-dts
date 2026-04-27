@@ -288,6 +288,8 @@ pnpm i -D @vue/language-core
 
 目前想要正常打包，需要规避上述情况，或使用别名代替（配合 `paths` 属性）。
 
+此外，使用 Vue 泛型组件（`<script setup generic="...">`）时，生成的 `.d.ts` 文件可能包含来自 `@vue/language-core` 的未解析内部类型（如 `__VLS_EmitsToProps`）。这些类型不属于 Vue 的公开 API，`@microsoft/api-extractor` 可能会因此报错 "Unable to follow symbol"。插件在开启 `bundleTypes` 时会自动将这些未解析的内部类型替换为 `{}`，通常不需要手动处理。
+
 ### 打包时出现找不到模块的错误
 
 这很有可能是因为在你的默认 `tsconfig.json` 中未有正确配置 `include` 导致的。
@@ -487,7 +489,7 @@ export interface PluginOptions {
   /**
    * 是否将动态引入转换为静态（例如：`import('vue').DefineComponent` 转换为 `import { DefineComponent } from 'vue'`）
    *
-   * 开启 `rollupTypes` 时强制为 `true`
+   * 开启 `bundleTypes` 时强制为 `true`
    *
    * @default false
    */

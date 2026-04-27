@@ -473,13 +473,15 @@ export class Runtime {
       logPrefix = '[dts]',
       copyDtsFiles = false,
       cleanVueFileName = false,
-      staticImport = false,
+      staticImport: staticImportOpt = false,
       clearPureImport = true,
       insertTypesEntry = false,
       bundleTypes = false,
       beforeWriteFile,
       afterRollup,
     } = options
+
+    const staticImport = bundleTypes ? true : staticImportOpt
 
     const {
       extractorConfig,
@@ -612,6 +614,7 @@ export class Runtime {
             staticImport,
             clearPureImport,
             cleanVueFileName,
+            replaceUnresolvedVLS: !!bundleTypes,
           })
 
           content = result.content
