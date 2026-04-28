@@ -1,7 +1,7 @@
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
 
 import MagicString from 'magic-string'
-import ts from 'typescript'
+import ts from './ts-loader.cjs'
 import { importResolves, isAliasGlobal, isRegExp, normalizePath } from './utils'
 
 import type { Alias } from 'vite'

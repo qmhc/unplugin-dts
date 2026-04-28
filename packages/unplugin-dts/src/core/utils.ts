@@ -10,7 +10,7 @@ import {
 import { existsSync, lstatSync, readdirSync, rmdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 
-import ts from 'typescript'
+import ts from './ts-loader.cjs'
 import debug from 'debug'
 import { getPackageInfoSync, resolveModule } from 'local-pkg'
 

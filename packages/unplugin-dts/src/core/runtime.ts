@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { cpus } from 'node:os'
 
-import ts from 'typescript'
+import ts from './ts-loader.cjs'
 import { createFilter } from '@rollup/pluginutils'
 import { compare } from 'compare-versions'
 import { green, red, yellow } from 'kolorist'

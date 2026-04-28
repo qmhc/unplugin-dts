@@ -5,7 +5,7 @@ import {
 } from '@vue/language-core'
 
 import { proxyCreateProgram } from '@volar/typescript'
-import ts from 'typescript'
+import ts from '../ts-loader.cjs'
 import { slash } from '../utils'
 
 export { createParsedCommandLine } from './ts'

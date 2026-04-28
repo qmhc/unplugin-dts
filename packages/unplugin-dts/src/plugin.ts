@@ -1,7 +1,7 @@
 import { basename, dirname } from 'node:path'
 import { readdirSync } from 'node:fs'
 
-import ts from 'typescript'
+import ts from './core/ts-loader.cjs'
 import { cyan, green, yellow } from 'kolorist'
 import {
   Runtime,

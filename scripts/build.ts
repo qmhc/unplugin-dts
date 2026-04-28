@@ -1,4 +1,5 @@
 import { resolve } from 'node:path'
+import { glob } from 'node:fs/promises'
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 
 import { execa } from 'execa'
@@ -20,7 +21,7 @@ async function main() {
     )
   
     await patchCommomJs(resolve(pkgRoot, 'dist/index.cjs'))
-    await patchESModule(resolve(pkgRoot, 'dist/index.mjs'))
+    await patchAllESModules(pkgRoot)
   }
 }
 
@@ -52,9 +53,27 @@ const require = __cjs_mod__.createRequire(import.meta.url);
 
 async function patchESModule(indexPath: string) {
   let indexCodes = await readFile(indexPath, 'utf-8')
+  if (indexCodes.includes('__cjs_url__')) return
   indexCodes = cjsBridge + indexCodes
 
   await writeFile(indexPath, indexCodes)
+}
+
+async function patchAllESModules(pkgRoot: string) {
+  const distDir = resolve(pkgRoot, 'dist')
+  const mjsFiles: string[] = []
+
+  try {
+    for await (const entry of glob('**/*.mjs', { cwd: distDir })) {
+      mjsFiles.push(resolve(distDir, entry))
+    }
+  } catch {
+    return
+  }
+
+  for (const filePath of mjsFiles) {
+    await patchESModule(filePath)
+  }
 }
 
 main().catch(error => {
