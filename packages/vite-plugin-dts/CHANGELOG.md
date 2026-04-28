@@ -1,30 +1,18 @@
+# [5.0.0-beta.7](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.7...v5.0.0-beta.7) (2026-04-28)
+
 # [5.0.0-beta.6](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.6...v5.0.0-beta.6) (2025-07-31)
-
-
 
 # [5.0.0-beta.5](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.5...v5.0.0-beta.5) (2025-07-30)
 
-
-
 # [5.0.0-beta.4](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.4...v5.0.0-beta.4) (2025-07-13)
-
-
 
 # [5.0.0-beta.3](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.3...v5.0.0-beta.3) (2025-07-07)
 
-
-
 # [5.0.0-beta.2](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.2...v5.0.0-beta.2) (2025-06-18)
-
-
 
 # [5.0.0-beta.1](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.1...v5.0.0-beta.1) (2025-06-16)
 
-
-
 # [5.0.0-beta.0](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.0...v5.0.0-beta.0) (2025-05-18)
-
-
 
 ## [4.5.4](https://github.com/qmhc/vite-plugin-dts/compare/v4.5.3...v4.5.4) (2025-05-15)
 
