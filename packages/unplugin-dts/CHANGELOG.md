@@ -1,24 +1,3 @@
-# [1.0.0-beta.7](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.6...v1.0.0-beta.7) (2026-04-28)
-
-### Bug Fixes
-
-- aliases in namespace imports ([#418](https://github.com/qmhc/vite-plugin-dts/issues/418)) ([#443](https://github.com/qmhc/vite-plugin-dts/issues/443)) ([3ca6044](https://github.com/qmhc/vite-plugin-dts/commit/3ca6044e537ace29378be8775f083f5858e5e300))
-- ensure parse default out dir from scaffold ([46cfca4](https://github.com/qmhc/vite-plugin-dts/commit/46cfca427d0cae2e41071f32001921ffb8a31a43))
-- **plugin:** allow custom resolver files to pass through transform ([63dc649](https://github.com/qmhc/vite-plugin-dts/commit/63dc6490d5cb2cc9ac3aa26fb2876f89bd5c8754)), closes [#444](https://github.com/qmhc/vite-plugin-dts/issues/444)
-- **plugin:** auto-detect Vue files and auto-set processor ([802d243](https://github.com/qmhc/vite-plugin-dts/commit/802d24346bb2d7e67f173ff7000d4955b7f30a7d)), closes [#454](https://github.com/qmhc/vite-plugin-dts/issues/454)
-- resolve tsconfig globs relative to tsconfig dir ([#455](https://github.com/qmhc/vite-plugin-dts/issues/455)) ([8df62f1](https://github.com/qmhc/vite-plugin-dts/commit/8df62f1bf38fb42c1748174f3de85f2a1131a554))
-- stricter strategy for skipping insert index ([8c30eb2](https://github.com/qmhc/vite-plugin-dts/commit/8c30eb259ec8ad2866f617958388937c1652c32b)), closes [#415](https://github.com/qmhc/vite-plugin-dts/issues/415)
-- **unplugin-dts:** publicRoot mismatch of TS 6.0 rootDir ([b0a695e](https://github.com/qmhc/vite-plugin-dts/commit/b0a695e648703bc814e15167583569d99d3f9fdd)), closes [#467](https://github.com/qmhc/vite-plugin-dts/issues/467)
-- **unplugin-dts:** remove forceDtsEmit to support declarationMap ([f417ffe](https://github.com/qmhc/vite-plugin-dts/commit/f417ffec770d887b03993f553532418c6203561b)), closes [#449](https://github.com/qmhc/vite-plugin-dts/issues/449)
-- **unplugin-dts:** resolve API Extractor failure with Vue internal types in bundleTypes ([e6c4eea](https://github.com/qmhc/vite-plugin-dts/commit/e6c4eea548b1aea3fa2d12e20f53f7d496f5bd78)), closes [#456](https://github.com/qmhc/vite-plugin-dts/issues/456)
-- **unplugin-dts:** resolve tsconfig paths without baseUrl relative to config dir ([051f2ea](https://github.com/qmhc/vite-plugin-dts/commit/051f2ea40bdb6e3cd7c27519a2e66b3aea5dad06)), closes [#458](https://github.com/qmhc/vite-plugin-dts/issues/458)
-- use native createParsedCommandLine ([1070f46](https://github.com/qmhc/vite-plugin-dts/commit/1070f46811243ebf2b7c6f4d30a6bdf3e2dbd07a)), closes [#446](https://github.com/qmhc/vite-plugin-dts/issues/446) [#448](https://github.com/qmhc/vite-plugin-dts/issues/448) [#451](https://github.com/qmhc/vite-plugin-dts/issues/451)
-
-### Features
-
-- auto fallback to @typescript/typescript6 for TS 7+ compatibility ([d150536](https://github.com/qmhc/vite-plugin-dts/commit/d150536e11eca7039e5baee05f8b1b17778782c0)), closes [#465](https://github.com/qmhc/vite-plugin-dts/issues/465)
-- supports specify module format for output ([a917f3c](https://github.com/qmhc/vite-plugin-dts/commit/a917f3cc395a4bc78cc94f64d71b43baa4e6ecd0))
-
 # [1.0.0-beta.6](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.5...v1.0.0-beta.6) (2025-07-31)
 
 ### Bug Fixes

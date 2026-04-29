@@ -23,11 +23,6 @@ async function main() {
     releaseTag = pkg.version?.split('-')[1]?.split('.')[0]
   }
 
-  // should be remove when v1 released
-  if (!ref.startsWith('vite-plugin-dts')) {
-    releaseTag = undefined
-  }
-
   await publish({
     pkgDir: pkgRoot,
     isDryRun,

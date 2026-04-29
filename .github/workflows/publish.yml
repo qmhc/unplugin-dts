@@ -10,6 +10,10 @@ jobs:
   publish:
     # if: github.repository == 'qmhc/vite-plugin-dts'
     runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -34,5 +38,4 @@ jobs:
       - name: Publish package
         run: pnpm run publish:ci ${{ github.ref_name }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_OPTIONS: --max-old-space-size=4096
