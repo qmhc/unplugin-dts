@@ -240,7 +240,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__P
 
       if (!hasVueEntries) {
         const includeGlobs = ensureArray(include)
-        hasVueInInclude = includeGlobs.some(g => g.includes('.vue'))
+        hasVueInInclude = includeGlobs.some(g => g?.includes('.vue'))
 
         if (!hasVueInInclude) {
           const configPath = tsconfigPath

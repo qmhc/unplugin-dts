@@ -40,7 +40,7 @@ describe('runtime tests', () => {
       pathsToAliases: true,
     })
 
-    const alias = runtime.aliases.find((a: any) =>
+    const alias = (runtime as any).aliases.find((a: any) =>
       typeof a.find === 'string' ? a.find === '@/' : a.find.test('@/helper'),
     )
 
@@ -73,7 +73,7 @@ describe('runtime tests', () => {
       pathsToAliases: true,
     })
 
-    const alias = runtime.aliases.find((a: any) =>
+    const alias = (runtime as any).aliases.find((a: any) =>
       typeof a.find === 'string' ? a.find === '@/' : a.find.test('@/helper'),
     )
 

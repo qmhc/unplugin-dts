@@ -7,7 +7,7 @@ on:
 
 jobs:
   release:
-    # if: github.repository == 'qmhc/vite-plugin-dts'
+    if: github.repository == 'qmhc/unplugin-dts'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

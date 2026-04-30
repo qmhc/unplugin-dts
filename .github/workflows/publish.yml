@@ -6,21 +6,21 @@ on:
       - v*
       - vite-plugin-dts@*
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   publish:
-    # if: github.repository == 'qmhc/vite-plugin-dts'
+    if: github.repository == 'qmhc/unplugin-dts'
     runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
 
       - name: Set node
         uses: actions/setup-node@v6

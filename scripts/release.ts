@@ -23,6 +23,7 @@ async function main() {
     isDryRun,
     preId,
     updateVersionByType: releaseType,
+    gitCommitScope: 'unplugin-dts',
     runTest: () => run('pnpm', ['test']),
     runBuild: () => run('pnpm', ['build']),
     runChangelog: () => run('pnpm', ['changelog'], { cwd: unpluginDir }),
