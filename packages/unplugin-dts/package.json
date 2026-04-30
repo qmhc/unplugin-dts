@@ -112,11 +112,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/qmhc/vite-plugin-dts.git",
+    "url": "git+https://github.com/qmhc/unplugin-dts.git",
     "directory": "packages/unplugin-dts"
   },
   "bugs": {
-    "url": "https://github.com/qmhc/vite-plugin-dts/issues"
+    "url": "https://github.com/qmhc/unplugin-dts/issues"
   },
   "dependencies": {
     "@rollup/pluginutils": "^5.1.4",

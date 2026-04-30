@@ -3,7 +3,7 @@ name: Publish Package
 on:
   push:
     tags:
-      - v*
+      - unplugin-dts@*
       - vite-plugin-dts@*
 
 permissions:

@@ -43,11 +43,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/qmhc/vite-plugin-dts.git",
+    "url": "git+https://github.com/qmhc/unplugin-dts.git",
     "directory": "packages/vite-plugin-dts"
   },
   "bugs": {
-    "url": "https://github.com/qmhc/vite-plugin-dts/issues"
+    "url": "https://github.com/qmhc/unplugin-dts/issues"
   },
   "dependencies": {
     "unplugin-dts": "workspace:*"
