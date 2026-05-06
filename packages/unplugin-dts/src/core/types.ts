@@ -184,7 +184,6 @@ export interface EmitOptions {
    * Whether to copy .d.ts source files to `outDir`.
    *
    * @default false
-   * @remarks Before 2.0, the default was `true`.
    */
   copyDtsFiles?: boolean,
   /**

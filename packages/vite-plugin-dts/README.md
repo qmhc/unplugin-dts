@@ -34,10 +34,10 @@ export default defineConfig({
       entry: resolve(__dirname, 'src/index.ts'),
       name: 'MyLib',
       formats: ['es'],
-      fileName: 'my-lib'
-    }
+      fileName: 'my-lib',
+    },
   },
-  plugins: [dts()]
+  plugins: [dts()],
 })
 ```
 
@@ -46,18 +46,22 @@ By default, the generated declaration files are following the source structure.
 Fortunately, with the help of [API Extractor](https://api-extractor.com/), the plugin can bundle all types into a single file. You just need to install `@microsoft/api-extractor` and set `bundleTypes: true`:
 
 ```ts
-{
-  plugins: [dts({ bundleTypes: true })]
-}
+export default defineConfig({
+  plugins: [dts({ bundleTypes: true })],
+})
 ```
 
 If you start with official Vite template, you should specify the `tsconfigPath`:
 
 ```ts
-{
-  plugins: [dts({ tsconfigPath: './tsconfig.app.json' })]
-}
+export default defineConfig({
+  plugins: [dts({ tsconfigPath: './tsconfig.app.json' })],
+})
 ```
+
+## Documentation
+
+For full documentation, please refer to [unplugin-dts](../../docs/en/usage.md).
 
 ## Example
 
