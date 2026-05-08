@@ -213,7 +213,7 @@ export interface EmitOptions {
    *
    * When `true`, uses package.json `types` property if it exists or `${outDir}/index.d.ts`.
    *
-   * Value is forced to `true` when `rollupTypes` is `true`.
+   * Value is forced to `true` when `bundleTypes` is enabled.
    *
    * @default false
    */
