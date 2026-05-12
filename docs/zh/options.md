@@ -83,12 +83,12 @@ export interface PluginOptions {
    * 默认使用脚手架提供的输出目录
    *
    * @example
-   * outDir: 'dist'
-   * outDir: ['dist', 'types']
-   * outDir: { dir: 'dist', moduleFormat: 'esm' }
-   * outDir: ['dist', { dir: 'dist-cjs', moduleFormat: 'cjs' }]
+   * outDirs: 'dist'
+   * outDirs: ['dist', 'types']
+   * outDirs: { dir: 'dist', moduleFormat: 'esm' }
+   * outDirs: ['dist', { dir: 'dist-cjs', moduleFormat: 'cjs' }]
    */
-  outDir?: OutDirsOption,
+  outDirs?: OutDirsOption,
 
   /**
    * 用于手动设置入口文件的根路径（通常用在 monorepo）

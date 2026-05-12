@@ -83,12 +83,12 @@ export interface PluginOptions {
    * The default is to use the out directory provided by the scaffold.
    *
    * @example
-   * outDir: 'dist'
-   * outDir: ['dist', 'types']
-   * outDir: { dir: 'dist', moduleFormat: 'esm' }
-   * outDir: ['dist', { dir: 'dist-cjs', moduleFormat: 'cjs' }]
+   * outDirs: 'dist'
+   * outDirs: ['dist', 'types']
+   * outDirs: { dir: 'dist', moduleFormat: 'esm' }
+   * outDirs: ['dist', { dir: 'dist-cjs', moduleFormat: 'cjs' }]
    */
-  outDir?: OutDirsOption,
+  outDirs?: OutDirsOption,
 
   /**
    * Override root path of entry files (useful in monorepos).
