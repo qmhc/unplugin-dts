@@ -8,7 +8,7 @@
 pnpm i -D unplugin-dts
 ```
 
-Previous only for Vite (not recommend):
+Previously only for Vite (not recommended):
 
 ```sh
 pnpm i -D vite-plugin-dts
@@ -208,7 +208,7 @@ export default defineConfig({
 
 ## Using with Vite Templates
 
-If you start with the official Vite template, you should specify `tsconfigPath`:
+If you are using the official Vite template, you should specify `tsconfigPath`:
 
 ```ts
 export default defineConfig({

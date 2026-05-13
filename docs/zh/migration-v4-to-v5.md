@@ -4,7 +4,7 @@
 
 v5 是一次重大架构升级。核心逻辑被提取到 `unplugin-dts` 中，`vite-plugin-dts` 退化为仅对 `unplugin-dts/vite` 的薄兼容导出。与此同时，插件正式支持 Rollup、Rolldown、Webpack、Rspack 和 Esbuild。
 
-> 如果你只在 Vite 中使用，可以继续保留 `vite-plugin-dts`，它的公开 API 与 v4 高度兼容。但建议未来新项目直接使用 `unplugin-dts`。
+> 如果你只在 Vite 中使用，可以继续保留 `vite-plugin-dts`，它的公开 API 与 v4 高度兼容。但建议未来在新项目中直接使用 `unplugin-dts`。
 
 ---
 
@@ -310,7 +310,7 @@ Detected .vue files but processor is set to "ts". Vue declaration files may not 
 
 v4 中，当 `rollupTypes: true` 时，`insertTypesEntry` 和 `staticImport` 会被强制设为 `true`。
 
-v5 中，触发条件改为 `bundleTypes` 启用时（无论布尔值还是对象形式）。
+v5 中，触发条件改为在 `bundleTypes` 启用时（无论布尔值还是对象形式）。
 
 ### `copyDtsFiles` 默认值因构建工具而异
 

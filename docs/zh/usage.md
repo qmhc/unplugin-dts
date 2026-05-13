@@ -192,9 +192,9 @@ await build({
 
 ## 打包类型
 
-默认情况，生成的类型文件会跟随源文件的结构。
+默认情况下，生成的类型文件会跟随源文件的结构。
 
-好在插件借助 [API Extractor](https://api-extractor.com/) 提供了汇总所有类型到一个文件的能力，只需安装 `@microsoft/api-extractor` 并指定 `bundleTypes: true`：
+插件借助 [API Extractor](https://api-extractor.com/) 提供了将所有类型汇总到单个文件的能力，你只需安装 `@microsoft/api-extractor` 并指定 `bundleTypes: true`：
 
 ```sh
 pnpm i -D @microsoft/api-extractor
@@ -218,13 +218,13 @@ export default defineConfig({
 
 ## 配合 Vue 使用
 
-如果你正在一个 **Vue 项目** 中使用它，你需要安装 `@vue/language-core` 作为一个必要依赖：
+如果你正在 **Vue 项目** 中使用，你需要安装 `@vue/language-core` 作为必要依赖：
 
 ```sh
 pnpm i -D @vue/language-core
 ```
 
-当你没有显式指定 `processor` 选项时，插件会自动检测 `.vue` 文件并使用 `'vue'` 处理器。不过，仍然建议显式进行设置：
+当你没有显式指定 `processor` 选项时，插件会自动检测 `.vue` 文件并使用 `'vue'` 处理器。不过，仍然建议显式设置：
 
 ```ts
 export default defineConfig({

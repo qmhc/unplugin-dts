@@ -4,9 +4,9 @@
 
 Here are some frequently asked questions and their solutions.
 
-## Type errors that are unable to infer types from packages in `node_modules`
+## Unable to infer types from packages in `node_modules`
 
-This is an existing [TypeScript issue](https://github.com/microsoft/TypeScript/issues/42873) where TypeScript infers types from packages located in `node_modules` through soft links (pnpm). A workaround is to add `baseUrl` to your `tsconfig.json` and specify the `paths` for these packages:
+This is an existing [TypeScript issue](https://github.com/microsoft/TypeScript/issues/42873) where TypeScript is unable to infer types from packages located in `node_modules` through soft links (pnpm). A workaround is to add `baseUrl` to your `tsconfig.json` and specify the `paths` for these packages:
 
 ```json
 {
@@ -23,13 +23,13 @@ This is an existing [TypeScript issue](https://github.com/microsoft/TypeScript/i
 
 Refer to this [issue](https://github.com/microsoft/rushstack/issues/3875). It's due to a limitation of `@microsoft/api-extractor` or the TypeScript resolver.
 
-The main reason is that `baseUrl` is specified in `tsconfig.json` and non-standard paths are used directly when imported.
+The main reason is that `baseUrl` is specified in `tsconfig.json` and non-standard paths are used directly in imports.
 
-For example: `baseUrl: 'src'` is specified and importing from `<root>/src/components/index.ts` in `<root>/src/index.ts`, and `import 'components'` is used instead of `import './components'`.
+For example, if `baseUrl: 'src'` is specified, importing from `<root>/src/components/index.ts` in `<root>/src/index.ts` using `import 'components'` instead of `import './components'` will trigger this issue.
 
-Currently, you need to avoid the above situation, or use aliases instead (with the `paths` option).
+Currently, you need to avoid the situation described above, or use aliases via the `paths` option instead.
 
-Additionally, when using Vue generic components (`<script setup generic="...">`), the generated `.d.ts` files may contain unresolved internal types (such as `__VLS_EmitsToProps`) from `@vue/language-core`. Since these are not part of Vue's public API, `@microsoft/api-extractor` may fail with "Unable to follow symbol". The plugin automatically replaces these unresolved internal types with `{}` when `bundleTypes` is enabled, so generally no manual action is required.
+Additionally, when using Vue generic components (`<script setup generic="...">`), the generated `.d.ts` files may contain unresolved internal types (such as `__VLS_EmitsToProps`) from `@vue/language-core`. Since these are not part of Vue's public API, `@microsoft/api-extractor` may fail with "Unable to follow symbol". The plugin automatically replaces these unresolved internal types with `{}` when `bundleTypes` is enabled, so manual intervention is generally not required.
 
 ## Get module not found errors during build
 

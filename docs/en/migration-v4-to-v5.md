@@ -211,7 +211,7 @@ export default defineConfig({
 })
 ```
 
-- When not specified, the plugin automatically scans source files for `.vue` files. If found, it automatically uses the `'vue'` processor.
+- When not specified, the plugin scans source files for `.vue` files. If any are found, it automatically uses the `'vue'` processor.
 - For pure TypeScript projects, keep the default `'ts'`.
 - **Note for Vue projects**: v5 requires installing `@vue/language-core` separately.
 
@@ -257,7 +257,7 @@ export default defineConfig({
 
 ### `bundleTypes.configPath`
 
-v5's `bundleTypes` adds `configPath`, allowing you to specify a real `api-extractor.json` config file path:
+v5's `bundleTypes` adds `configPath`, allowing you to specify an actual `api-extractor.json` config file path:
 
 ```ts
 import { defineConfig } from 'vite'
@@ -292,7 +292,7 @@ export interface OutDirConfig {
 
 ### `declarationOnly` and esbuild
 
-In v4, `declarationOnly: true` forcefully removes all build artifacts (Vite/Rollup only).
+In v4, `declarationOnly: true` forcibly removes all build artifacts (Vite/Rollup only).
 
 In v5, this behavior remains the same, but **esbuild is excluded** — enabling `declarationOnly` in esbuild will not remove original outputs, because esbuild's plugin lifecycle and bundling mechanism differ from Rollup-based tools.
 
@@ -310,7 +310,7 @@ It is recommended to explicitly configure `processor: 'vue'` for Vue projects.
 
 In v4, when `rollupTypes: true`, `insertTypesEntry` and `staticImport` were forced to `true`.
 
-In v5, the trigger condition has been renamed to when `bundleTypes` is enabled (boolean or object form).
+In v5, the trigger condition has been updated: it is now when `bundleTypes` is enabled (in either boolean or object form).
 
 ### `copyDtsFiles` Defaults Vary by Bundler
 
