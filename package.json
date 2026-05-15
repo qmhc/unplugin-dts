@@ -70,6 +70,7 @@
   "pnpm": {
     "overrides": {
       "@microsoft/api-extractor@<7.57.6": "7.57.6",
+      "fast-uri@<3.1.2": ">=3.1.2",
       "minimatch@>=10.0.0 <10.2.3": "10.2.4"
     }
   }
