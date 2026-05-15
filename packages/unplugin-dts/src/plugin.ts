@@ -33,7 +33,7 @@ import type { Logger } from './core'
 const pluginName = 'unplugin:dts'
 const logPrefix = cyan(`[${pluginName}]`)
 
-export const pluginFactory: UnpluginFactory<PluginOptions | undefined> = /* #__PURE__ */ (
+export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = /* #__PURE__ */ (
   options = {},
   meta,
 ) => {

@@ -32,6 +32,7 @@ export const jsRE = /\.([cm])?jsx?$/
 export const tsRE = /\.([cm])?tsx?$/
 export const dtsRE = /\.d\.([cm])?tsx?$/
 export const tjsRE = /\.([cm])?([jt])sx?$/
+// e.g. .ts .tsx .js .jsx .mts .mjs .cts .cjs
 export const mtjsRE = /\.m([jt])sx?$/
 export const ctjsRE = /\.c([jt])sx?$/
 export const fullRelativeRE = /^\.\.?\//
