@@ -46,7 +46,7 @@ import {
   unwrapPromise,
 } from './utils'
 
-import type { Alias } from 'vite'
+import type { Alias } from './types'
 import type { ProgramProcessor } from './processor'
 import type { Resolver } from './resolvers'
 import type {

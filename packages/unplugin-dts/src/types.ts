@@ -14,6 +14,39 @@ import type {
 
 export type { ModuleFormat, OutDirConfig, OutDirsOption, Resolver, RollupConfig, Runtime }
 
+export interface PluginInstance {
+  /**
+   * Returns a Rollup plugin.
+   * Equivalent to {@link import('rollup').Plugin}.
+   */
+  rollup(options?: PluginOptions): any,
+  /**
+   * Returns a Rolldown plugin.
+   * Equivalent to {@link import('rolldown').Plugin}.
+   */
+  rolldown(options?: PluginOptions): any,
+  /**
+   * Returns a Vite plugin.
+   * Equivalent to {@link import('vite').Plugin}.
+   */
+  vite(options?: PluginOptions): any,
+  /**
+   * Returns a Webpack plugin.
+   * Equivalent to {@link import('webpack').WebpackPluginInstance}.
+   */
+  webpack(options?: PluginOptions): any,
+  /**
+   * Returns an Rspack plugin.
+   * Equivalent to {@link import('@rspack/core').RspackPluginInstance}.
+   */
+  rspack(options?: PluginOptions): any,
+  /**
+   * Returns an esbuild plugin.
+   * Equivalent to {@link import('esbuild').Plugin}.
+   */
+  esbuild(options?: PluginOptions): any,
+}
+
 export interface PluginOptions
   extends Omit<Partial<CreateRuntimeOptions>, 'entries' | 'libName' | 'indexName' | 'logger'>,
   Omit<EmitOptions, 'logPrefix'> {

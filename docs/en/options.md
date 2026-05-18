@@ -264,7 +264,7 @@ Packages whose types should be inlined into the rolled-up output. See [bundledPa
 
 #### `bundleTypes.invokeOptions`
 
-- **Type:** `IExtractorInvokeOptions`
+- **Type:** `ExtractorInvokeOptions`
 - **Default:** `{}`
 
 Override the invocation options of `@microsoft/api-extractor`. See [Invoking from a build script](https://api-extractor.com/pages/setup/invoking/#invoking-from-a-build-script).

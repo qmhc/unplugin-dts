@@ -264,7 +264,7 @@ import { DefineComponent } from 'vue'
 
 #### `bundleTypes.invokeOptions`
 
-- **类型：** `IExtractorInvokeOptions`
+- **类型：** `ExtractorInvokeOptions`
 - **默认值：** `{}`
 
 覆写 `@microsoft/api-extractor` 的调用选项。详见 [Invoking from a build script](https://api-extractor.com/pages/setup/invoking/#invoking-from-a-build-script)。

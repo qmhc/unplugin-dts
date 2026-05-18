@@ -4,7 +4,7 @@ import MagicString from 'magic-string'
 import ts from './ts-loader.cjs'
 import { importResolves, isAliasGlobal, isRegExp, normalizePath } from './utils'
 
-import type { Alias } from 'vite'
+import type { Alias } from './types'
 
 const globSuffixRE = /^((?:.*\.[^.]+)|(?:\*+))$/
 

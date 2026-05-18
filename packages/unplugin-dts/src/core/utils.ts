@@ -15,7 +15,7 @@ import debug from 'debug'
 import { getPackageInfoSync, resolveModule } from 'local-pkg'
 
 import type { CompilerOptions } from 'typescript'
-import type { Alias } from 'vite'
+import type { Alias } from './types'
 import type { ModuleFormat, NormalizedOutDir, OutDirConfig, OutDirsOption } from './types'
 
 export type MaybePromise<T> = T | Promise<T>

@@ -26,7 +26,7 @@ import type {
   UnpluginFactory,
   WebpackCompiler,
 } from 'unplugin'
-import type { Alias } from 'vite'
+import type { Alias } from './core'
 import type { PluginOptions } from './types'
 import type { Logger } from './core'
 
