@@ -342,10 +342,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
       const sourceFile = runtime.getHost().getSourceFile(id, ts.ScriptTarget.ESNext)
 
       if (sourceFile) {
-        for (const file of runtime.getRootFiles()) {
-          runtime.addRootFile(file)
-        }
-
+        runtime.restoreRootFiles()
         runtime.addRootFile(normalizePath(sourceFile.fileName))
 
         bundled = false

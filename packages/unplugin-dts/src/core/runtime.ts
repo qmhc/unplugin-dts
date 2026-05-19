@@ -353,6 +353,12 @@ export class Runtime {
     return [...this.rootFiles]
   }
 
+  restoreRootFiles() {
+    for (const file of this.rootNames) {
+      this.rootFiles.add(file)
+    }
+  }
+
   addRootFile(fileName: string) {
     this.rootFiles.add(normalizePath(fileName))
   }

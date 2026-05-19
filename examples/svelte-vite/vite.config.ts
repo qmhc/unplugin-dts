@@ -1,9 +1,12 @@
-import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
 import { existsSync, readdirSync, rmSync } from 'node:fs'
 
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import dts from '../../packages/unplugin-dts/src/vite'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 emptyDir(resolve(__dirname, 'dist'))
 emptyDir(resolve(__dirname, 'types'))

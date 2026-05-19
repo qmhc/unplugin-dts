@@ -1,3 +1,12 @@
+## [1.0.1](https://github.com/qmhc/unplugin-dts/compare/v1.0.0-beta.7...v1.0.1) (2026-05-19)
+
+### Bug Fixes
+
+- include .vue files when resolving tsconfig include patterns ([d4e41d2](https://github.com/qmhc/unplugin-dts/commit/d4e41d26f825fe6ef6ca682bf36be2687992e20e)), closes [#469](https://github.com/qmhc/unplugin-dts/issues/469)
+- **rolldown:** correct exported type for Rolldown plugin ([6e0c0d2](https://github.com/qmhc/unplugin-dts/commit/6e0c0d2aec8d971a28530b649b0d822004f27bd8)), closes [#470](https://github.com/qmhc/unplugin-dts/issues/470)
+- **unplugin-dts:** avoid leaking optional peer types into declaration files ([e0eda08](https://github.com/qmhc/unplugin-dts/commit/e0eda08c3efe59e5fdc3b6bbf1b3c9da1a8a0ae6)), closes [#476](https://github.com/qmhc/unplugin-dts/issues/476)
+- **unplugin-dts:** forward aliasesExclude to Runtime ([739db62](https://github.com/qmhc/unplugin-dts/commit/739db6209ff21d7b3d6ca0c5b394b474ce85c641)), closes [#472](https://github.com/qmhc/unplugin-dts/issues/472)
+
 # [1.0.0](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.7...v1.0.0) (2026-04-30)
 
 # [1.0.0-beta.6](https://github.com/qmhc/vite-plugin-dts/compare/v1.0.0-beta.5...v1.0.0-beta.6) (2025-07-31)
