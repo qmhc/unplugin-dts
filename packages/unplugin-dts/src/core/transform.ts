@@ -56,28 +56,26 @@ function transformAlias(
     aliases?.length &&
     !aliasesExclude.some(e => (isRegExp(e) ? e.test(importer) : String(e) === importer))
   ) {
-    const matchedAlias = aliases.find(alias => isAliasMatch(alias, importer))
+    for (const alias of aliases) {
+      if (!isAliasMatch(alias, importer)) continue
 
-    if (matchedAlias) {
-      const replacement = isAbsolute(matchedAlias.replacement)
-        ? normalizePath(relative(dir, matchedAlias.replacement))
-        : normalizePath(matchedAlias.replacement)
+      const replacement = isAbsolute(alias.replacement)
+        ? normalizePath(relative(dir, alias.replacement))
+        : normalizePath(alias.replacement)
 
       const endsWithSlash =
-        typeof matchedAlias.find === 'string'
-          ? matchedAlias.find.endsWith('/')
-          : importer.match(matchedAlias.find)![0].endsWith('/')
-      const truthPath = importer.replace(
-        matchedAlias.find,
-        replacement + (endsWithSlash ? '/' : ''),
-      )
+        typeof alias.find === 'string'
+          ? alias.find.endsWith('/')
+          : importer.match(alias.find)![0].endsWith('/')
+      const truthPath = importer.replace(alias.find, replacement + (endsWithSlash ? '/' : ''))
 
       const absolutePath = resolve(dir, truthPath)
       const normalizedPath = normalizePath(relative(dir, absolutePath))
       const resultPath = normalizedPath.startsWith('.') ? normalizedPath : `./${normalizedPath}`
 
-      if (!isAliasGlobal(matchedAlias)) return resultPath
+      if (!isAliasGlobal(alias)) return resultPath
       if (importResolves(absolutePath)) return resultPath
+      // global alias didn't resolve — continue to try next alias
     }
   }
 

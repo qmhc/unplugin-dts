@@ -283,6 +283,33 @@ describe('transform tests', () => {
     ).toEqual("import { someFutureImport } from 'installedDependency';\n")
   })
 
+  it('test: transformCode — wildcard * before @/* does not block @/ resolution', () => {
+    const tsPaths = {
+      '*': ['tests/__fixtures__/*'],
+      '@/*': ['src/*'],
+    }
+
+    const aliases = parseTsAliases(resolve(__dirname, '..'), tsPaths)
+
+    const options = (content: string) => ({
+      content,
+      filePath: resolve(__dirname, '../src/index.ts'),
+      aliases,
+      aliasesExclude: [],
+      staticImport: true,
+      clearPureImport: true,
+      cleanVueFileName: true,
+    })
+
+    expect(transformCode(options('import { Foo } from "@/foo";')).content).toEqual(
+      "import { Foo } from './foo';\n",
+    )
+
+    expect(transformCode(options('import { Foo } from "@/nested/foo";')).content).toEqual(
+      "import { Foo } from './nested/foo';\n",
+    )
+  })
+
   it('test: transformCode (remove pure imports)', () => {
     const options = (content: string) => ({
       content,
