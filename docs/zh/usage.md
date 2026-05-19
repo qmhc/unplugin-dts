@@ -4,6 +4,8 @@
 
 ## 安装
 
+需要 **Node.js >= 20**。
+
 ```sh
 pnpm i -D unplugin-dts
 ```

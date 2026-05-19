@@ -4,6 +4,8 @@
 
 ## Installation
 
+Requires **Node.js >= 20**.
+
 ```sh
 pnpm i -D unplugin-dts
 ```

@@ -28,7 +28,7 @@
     "dist"
   ],
   "engines": {
-    "node": "^14.18.0 || >=16.0.0"
+    "node": ">=20"
   },
   "keywords": [
     "vite",
