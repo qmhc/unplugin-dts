@@ -154,4 +154,56 @@ describe('runtime tests', () => {
     expect(alias).toBeDefined()
     expect(normalizePath(alias!.replacement)).toBe(normalizePath(resolve(tempDir, 'lib/src/$1')))
   })
+
+  it('should not create self-referencing synthetic entry when entry dts path equals types path', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          allowImportingTsExtensions: true,
+          strict: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(
+      resolve(tempDir, 'src', 'index.ts'),
+      `export { setupCounter } from './counter.ts'\n`,
+    )
+    writeFileSync(
+      resolve(tempDir, 'src', 'counter.ts'),
+      `export function setupCounter(element: HTMLButtonElement) {}\n`,
+    )
+
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      entries: {
+        index: resolve(tempDir, 'src/index.ts'),
+      },
+    })
+
+    // Simulate a rebuild by re-transforming the entry file
+    await runtime.transform(resolve(tempDir, 'src/index.ts'), '')
+
+    const emittedFiles = await runtime.emitOutput({
+      insertTypesEntry: true,
+      bundleTypes: false,
+    })
+
+    const indexDtsPath = resolve(tempDir, 'dist/index.d.ts')
+    const content = emittedFiles.get(normalizePath(indexDtsPath))
+
+    // The entry declaration itself should be preserved, not replaced by a
+    // self-referencing synthetic entry like `export * from './index'`.
+    expect(content).toContain('setupCounter')
+    expect(content).not.toContain("export * from './index'")
+  })
 })

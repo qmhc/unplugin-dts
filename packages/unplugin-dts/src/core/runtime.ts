@@ -723,8 +723,6 @@ export class Runtime {
           )
           : typesPath
 
-        if (transformed.has(relative(outDir, entryDtsPath)) && existsSync(entryDtsPath)) continue
-
         const sourceEntry = normalizePath(
           cleanPath(
             resolve(
@@ -734,6 +732,12 @@ export class Runtime {
             emittedFiles,
           ),
         )
+
+        if (
+          entryDtsPath === sourceEntry ||
+          (transformed.has(relative(outDir, entryDtsPath)) && existsSync(entryDtsPath))
+        )
+          continue
 
         let fromPath = normalizePath(relative(dirname(entryDtsPath), sourceEntry))
 
