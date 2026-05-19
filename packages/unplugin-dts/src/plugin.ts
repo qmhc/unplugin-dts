@@ -286,6 +286,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
         resolvers,
         entries,
         aliases: options.aliases ?? aliases,
+        aliasesExclude,
         libName,
         indexName,
         logger,

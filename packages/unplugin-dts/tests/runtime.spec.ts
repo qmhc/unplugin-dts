@@ -98,6 +98,30 @@ describe('runtime tests', () => {
     expect(ts6307).toHaveLength(0)
   })
 
+  it('should forward aliasesExclude to Runtime', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {},
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(resolve(tempDir, 'src', 'index.ts'), 'export const foo = 1\n')
+
+    const aliasesExclude = [/^@gafe\//]
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      aliasesExclude,
+    })
+
+    expect((runtime as any).aliasesExclude).toEqual(aliasesExclude)
+  })
+
   it('should use baseUrl when explicitly set', async () => {
     tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
 
