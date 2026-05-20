@@ -48,6 +48,40 @@ describe('runtime tests', () => {
     expect(normalizePath(alias!.replacement)).toBe(normalizePath(resolve(tempDir, 'src/$1')))
   })
 
+  it('should resolve @/* alias when wildcard * path is also present', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          paths: {
+            '*': ['./src/*'],
+            '@/*': ['./src/*'],
+          },
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'))
+    writeFileSync(resolve(tempDir, 'src', 'index.ts'), 'export const foo = 1\n')
+    writeFileSync(resolve(tempDir, 'src', 'helper.ts'), 'export const bar = 2\n')
+
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      pathsToAliases: true,
+    })
+
+    const atAlias = (runtime as any).aliases.find((a: any) =>
+      typeof a.find === 'string' ? a.find === '@/' : a.find.test('@/helper'),
+    )
+
+    expect(atAlias).toBeDefined()
+    expect(normalizePath(atAlias!.replacement)).toBe(normalizePath(resolve(tempDir, 'src/$1')))
+  })
+
   it('should include .vue files when using glob patterns with processor vue', async () => {
     tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
 

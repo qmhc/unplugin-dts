@@ -5,7 +5,6 @@ import { cpus } from 'node:os'
 
 import ts from './ts-loader.cjs'
 import { createFilter } from '@rollup/pluginutils'
-import { compare } from 'compare-versions'
 import { green, red, yellow } from 'kolorist'
 import { loadProgramProcessor } from './processor'
 import { JsonResolver, SvelteResolver, VueResolver, parseResolvers } from './resolvers'
@@ -276,16 +275,12 @@ export class Runtime {
       ? ensureAbsolute(resolveConfigDir(compilerOptions.rootDir, root), root)
       : compilerOptions.composite && compilerOptions.configFilePath
         ? dirname(compilerOptions.configFilePath as string)
-        : compare(ts.version, '6.0.0', '>=')
-          ? configPath
-            ? dirname(configPath)
-            : root
-          : queryPublicPath(
-            program
-              .getSourceFiles()
-              .filter(maybeEmitted)
-              .map(sourceFile => sourceFile.fileName),
-          )
+        : queryPublicPath(
+          program
+            .getSourceFiles()
+            .filter(maybeEmitted)
+            .map(sourceFile => sourceFile.fileName),
+        ) || (configPath ? dirname(configPath) : root)
     publicRoot = normalizePath(publicRoot)
 
     let entryRoot = options.entryRoot || publicRoot
