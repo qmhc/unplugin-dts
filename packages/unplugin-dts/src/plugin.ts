@@ -329,16 +329,23 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
     watchChange(id) {
       id = normalizePath(id)
 
-      if (
-        isDev ||
-        !runtime ||
-        !runtime.filter(id) ||
-        (!runtime.matchResolver(id) && !tjsRE.test(id))
-      ) {
+      if (isDev || !runtime || !runtime.filter(id)) {
         return
       }
 
       id = id.split('?')[0]
+
+      if (!runtime.matchResolver(id) && !tjsRE.test(id)) {
+        // Non-type files (e.g. CSS) changed: no need to rebuild program,
+        // but need to restore rootFiles and allow writeBundle to re-emit
+        // declarations. This is important in watch mode because the bundler
+        // may empty outDir during rebuild, deleting previously emitted .d.ts.
+        runtime.restoreRootFiles()
+        bundled = false
+        timeRecord = 0
+        return
+      }
+
       const sourceFile = runtime.getHost().getSourceFile(id, ts.ScriptTarget.ESNext)
 
       if (sourceFile) {
