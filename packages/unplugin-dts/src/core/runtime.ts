@@ -99,7 +99,9 @@ function parseAliases(aliasOptions: AliasOptions = [], aliasesExclude: (string |
 
 export class Runtime {
   static async toInstance({ processor = 'ts', ...options }: CreateRuntimeOptions) {
-    return new Runtime(options, await loadProgramProcessor(processor))
+    const mod = await loadProgramProcessor(processor)
+    const api = (mod as any).default ?? mod
+    return new Runtime(options, api)
   }
 
   protected root: string

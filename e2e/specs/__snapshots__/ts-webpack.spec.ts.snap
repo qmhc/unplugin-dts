@@ -1,0 +1,43 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ts-webpack > should match snapshot for dist/index.d.ts 1`] = `
+"import { default as data } from './data.json';
+import { TestBase } from './test';
+import { DynamicImportType } from './dynamic';
+import { DynamicImportType2 } from './dynamic2';
+export declare const dy: DynamicImportType;
+export declare const dy1: DynamicImportType2;
+export interface Test extends TestBase {
+    count: number;
+}
+export { testFn } from './comment';
+export { Decorator } from './decorator';
+export { addOne, add, jsdoc } from './js-test.js';
+export { ESClass } from './es-class';
+export { manualDts } from './manual-dts';
+export { ParametersTest, test, method } from './test';
+export { data };
+export default data;
+export type { User as MyUser } from './types';
+export type { AliasType } from './alias/type';
+export type * from './namespace';
+export type * from './modules';
+declare module './test' {
+    interface TestBase {
+        name: string;
+        mail?: string;
+    }
+}
+export { Status, Color } from './enum';
+export type { ID, Point, Shape, StatusUnion } from './type-aliases';
+export type { PartialPerson, PickName, OmitEmail, ReadonlyPerson } from './utility-types';
+export { createElement } from './function-overloads';
+export type { IsString, EventMap, EventName, EventPayload, Greeting } from './advanced-types';
+//# sourceMappingURL=index.d.ts.map"
+`;
+
+exports[`ts-webpack > should match snapshot for dist/main.d.ts 1`] = `
+"export { test, method } from './test';
+export type { User } from './types';
+//# sourceMappingURL=main.d.ts.map"
+`;
