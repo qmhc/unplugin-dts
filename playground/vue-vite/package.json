@@ -1,0 +1,23 @@
+{
+  "name": "vue-example",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "pnpm run clean && DEBUG=\"dts-debug\" vite build",
+    "clean": "rimraf dist && rimraf types",
+    "tsc": "vue-tsc --declaration --emitDeclarationOnly --declarationMap --outDir tsc-dist"
+  },
+  "types": "dist/inndex.d.ts",
+  "dependencies": {
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "tslib": "^2.8.1",
+    "typescript": "5.7.3",
+    "unplugin-vue": "^6.2.0",
+    "unplugin-vue-jsx": "^0.6.1",
+    "vite": "^6.0.7",
+    "vue-tsc": "^2.2.0"
+  }
+}

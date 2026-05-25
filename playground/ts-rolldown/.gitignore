@@ -1,0 +1,7 @@
+types/
+dist/
+node_modules/
+
+# Rolldown may emit inlined plugin chunks to the project root
+ts-*.js
+unplugin-dts.*.js

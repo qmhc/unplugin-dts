@@ -1,0 +1,11 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`svelte-vite > should match snapshot for dist/index.d.ts 1`] = `
+"import { SvelteComponent } from 'svelte';
+
+export { SvelteComponent as Counter }
+export default SvelteComponent;
+
+export { }
+"
+`;

@@ -1,0 +1,20 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`react-vite > should match snapshot for dist/index.d.ts 1`] = `
+"import { HelloWorld } from './components/HelloWorld';
+import { ReactDOM as MyReactDOM } from 'react';
+import * as Components from './components';
+export { HelloWorld };
+export { Components };
+export { App } from './App';
+export { useCount } from './hooks/useCount';
+export * from './modules';
+export declare function test(_dom: MyReactDOM): void;
+export default HelloWorld;
+"
+`;
+
+exports[`react-vite > should match snapshot for dist/main.d.ts 1`] = `
+"export { HelloWorld } from './components/HelloWorld';
+"
+`;

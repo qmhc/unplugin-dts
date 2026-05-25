@@ -11,8 +11,20 @@ export interface ProgramProcessor {
 
 export async function loadProgramProcessor(type: 'vue' | 'ts' = 'ts'): Promise<ProgramProcessor> {
   if (type === 'vue') {
-    return await import('./vue')
+    try {
+      const mod = await import('./vue.js')
+      return (mod as any).default ?? mod
+    } catch {
+      const mod = await import('./vue')
+      return (mod as any).default ?? mod
+    }
   }
 
-  return await import('./ts')
+  try {
+    const mod = await import('./ts.js')
+    return (mod as any).default ?? mod
+  } catch {
+    const mod = await import('./ts')
+    return (mod as any).default ?? mod
+  }
 }

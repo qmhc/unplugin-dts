@@ -1,0 +1,180 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ts-esbuild > should match snapshot for dist/index.d.ts 1`] = `
+"import { default as default_2 } from './data.json';
+
+export declare function add(...args: any[]): any;
+
+export declare function addOne(x: any): number;
+
+export declare interface AliasType {
+    count: number;
+    name: string;
+}
+
+export declare enum Color {
+    Red = "RED",
+    Green = "GREEN",
+    Blue = "BLUE"
+}
+
+export declare function createElement(tag: 'div'): HTMLDivElement;
+
+export declare function createElement(tag: 'span'): HTMLSpanElement;
+
+export declare class Decorator {
+    method(): void;
+}
+
+export { default_2 as data }
+export default default_2;
+
+export declare const dy: DynamicImportType;
+
+export declare const dy1: DynamicImportType2;
+
+declare interface DynamicImportType {
+    a: number;
+}
+
+declare interface DynamicImportType2 {
+    a: number;
+}
+
+export declare class ESClass {
+    weakSet?: WeakSet<object>;
+    set?: Set<object>;
+}
+
+export declare type EventMap = {
+    click: {
+        x: number;
+        y: number;
+    };
+    scroll: {
+        top: number;
+    };
+};
+
+export declare type EventName = keyof EventMap;
+
+export declare type EventPayload<T extends EventName> = EventMap[T];
+
+declare interface FnMap {
+    [key: string]: () => void;
+}
+
+export declare type Greeting<T extends string> = \`hello-\${T}\`;
+
+export declare type ID = string | number;
+
+export declare type IsString<T> = T extends string ? true : false;
+
+/**
+ * @param {number} one
+ * @param {number} two
+ * @returns {string}
+ */
+export declare function jsdoc(one: number, two: number): string;
+
+export declare function manualDts(number: any, string: any): string;
+
+export declare function method(arg: string): void;
+
+export declare interface MyUser {
+    id: string;
+    name: string;
+}
+
+export declare namespace NameSpace {
+    const namespace = "namespace";
+    export const enum NamespaceEnum {
+        A = 0,
+        B = 1,
+        C = 2,
+        D = 3
+    }
+}
+
+export declare type OmitEmail = Omit<Person, 'email'>;
+
+export declare class ParametersTest<T extends FnMap> {
+    emit<K extends keyof T>(...values: Parameters<T[K]>): void;
+}
+
+export declare type PartialPerson = Partial<Person>;
+
+declare interface Person {
+    name: string;
+    age: number;
+    email: string;
+}
+
+export declare type PickName = Pick<Person, 'name'>;
+
+export declare type Point = {
+    x: number;
+    y: number;
+};
+
+export declare type ReadonlyPerson = Readonly<Person>;
+
+export declare type Shape = Point & {
+    z: number;
+};
+
+export declare enum Status {
+    Active = 0,
+    Inactive = 1
+}
+
+export declare type StatusUnion = 'idle' | 'loading' | 'done';
+
+export declare interface Test extends TestBase {
+    count: number;
+}
+
+export declare const test: TestBase;
+
+declare interface TestBase {
+    name: string;
+}
+
+/**
+ * Test comment
+ */
+export declare function testFn(): number;
+
+export { }
+
+declare module 'tslib' {
+    type Test = {
+        newField: string;
+    };
+}
+"
+`;
+
+exports[`ts-esbuild > should match snapshot for dist/main.d.ts 1`] = `
+"export declare function method(arg: string): void;
+
+export declare const test: TestBase;
+
+declare interface TestBase {
+    name: string;
+}
+
+export declare interface User {
+    id: string;
+    name: string;
+}
+
+export { }
+
+declare module 'tslib' {
+    type Test = {
+        newField: string;
+    };
+}
+"
+`;

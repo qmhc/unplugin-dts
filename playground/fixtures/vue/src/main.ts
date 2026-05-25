@@ -1,0 +1,5 @@
+export { default as Setup } from '@/components/Setup.vue'
+export { Decorator } from './decorator'
+export type { User } from './types'
+export type { DtsType } from './dts-types'
+export type * from './modules'
