@@ -61,20 +61,6 @@ Thanks for all the contributions!
   <img src="https://contrib.rocks/image?repo=qmhc/vite-plugin-dts" alt="contributors" />
 </a>
 
-## Example
-
-Clone and run the following script (see demo series scripts in root `package.json`):
-
-```sh
-pnpm run demo:ts-rollup
-pnpm run demo:react-vite
-pnpm run demo:vue-rspack
-```
-
-Then check `examples/*/types`.
-
-There are also many cases under `examples`.
-
 A real project using this plugin: [Vexip UI](https://github.com/vexip-ui/vexip-ui).
 
 ## License

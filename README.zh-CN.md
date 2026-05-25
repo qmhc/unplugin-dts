@@ -61,18 +61,6 @@ export default defineConfig({
   <img src="https://contrib.rocks/image?repo=qmhc/vite-plugin-dts" alt="contributors" />
 </a>
 
-## 示例
-
-克隆项目然后执行下列命令：
-
-```sh
-pnpm run test:ts
-```
-
-然后检查 `examples/ts/types` 目录。
-
-`examples` 目录下同样有 Vue 和 React 的案例。
-
 一个使用该插件的真实项目：[Vexip UI](https://github.com/vexip-ui/vexip-ui)。
 
 ## 授权
