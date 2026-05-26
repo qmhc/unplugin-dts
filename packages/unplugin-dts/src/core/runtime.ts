@@ -563,7 +563,7 @@ export class Runtime {
     for (const sourceFile of sourceFiles) {
       if (!this.filter(sourceFile.fileName)) continue
 
-      if (copyDtsFiles && dtsRE.test(sourceFile.fileName)) {
+      if ((copyDtsFiles || bundleTypes) && dtsRE.test(sourceFile.fileName)) {
         outputFiles.set(normalizePath(sourceFile.fileName), sourceFile.getFullText())
       }
 
@@ -603,10 +603,18 @@ export class Runtime {
       cpus().length,
       Array.from(declarationFiles.entries()),
       async ([filePath, content]) => {
-        const newFilePath = resolve(
-          outDir,
-          relative(entryRoot, cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath),
+        let relativePath = relative(
+          entryRoot,
+          cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath,
         )
+
+        // 当 entryRoot 是子目录时，entryRoot 之外的文件会被映射到 outDir 之外。
+        // 此时回退到使用项目根目录作为基准，确保文件仍被正确写入 outDir 内。
+        if (relativePath.startsWith('..')) {
+          relativePath = relative(root, cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath)
+        }
+
+        const newFilePath = resolve(outDir, relativePath)
 
         if (content) {
           const result = transformCode({
@@ -640,10 +648,18 @@ export class Runtime {
       async ([filePath, content]) => {
         const baseDir = dirname(filePath)
 
-        filePath = resolve(
-          outDir,
-          relative(entryRoot, cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath),
+        let relativePath = relative(
+          entryRoot,
+          cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath,
         )
+
+        // 当 entryRoot 是子目录时，entryRoot 之外的文件会被映射到 outDir 之外。
+        // 此时回退到使用项目根目录作为基准，确保文件仍被正确写入 outDir 内。
+        if (relativePath.startsWith('..')) {
+          relativePath = relative(root, cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath)
+        }
+
+        filePath = resolve(outDir, relativePath)
 
         try {
           const sourceMap: { sources: string[], mappings: string } = JSON.parse(content)

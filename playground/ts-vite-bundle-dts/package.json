@@ -1,0 +1,15 @@
+{
+  "name": "ts-vite-bundle-dts-example",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "pnpm run clean && DEBUG=\"dts-debug\" vite build",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "axios": "^1.16.1",
+    "typescript": "5.7.3",
+    "vite": "^6.0.7"
+  }
+}
