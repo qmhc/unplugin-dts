@@ -115,3 +115,17 @@ However, this has two limitations:
 
 1. It forces all declarations into a **single rolled-up file** per entry, which is not ideal for libraries with multiple entries.
 2. `@microsoft/api-extractor` may fail to inline certain complex types (e.g., cross-file re-exports, Vue-specific types) and throw an "Unable to follow symbol" error.
+
+## Duplicated types with multiple entries when `bundleTypes: true`
+
+When building a library with multiple entries (e.g., `index` and `react`) that share common code, `bundleTypes: true` processes each entry independently via `@microsoft/api-extractor`, which inlines all dependent types into a single `.d.ts` file per entry.
+
+This means shared types (classes, interfaces, etc.) are duplicated across entry `.d.ts` files. For most types this may go unnoticed, but for classes with `private` members, TypeScript treats each duplicate declaration as a distinct type, causing type mismatch errors for consumers.
+
+This is a fundamental limitation of `@microsoft/api-extractor`, which is designed as a single-entrypoint bundler and has no concept of declaration-file chunks.
+
+### Workaround
+
+Avoid `bundleTypes: true` for multi-entry libraries that share significant internal code. Instead, let the plugin emit declarations in the original module structure (the default behavior without `bundleTypes`). The shared modules will then have their own `.d.ts` files, and each entrypoint can import from them without duplication.
+
+If you must produce a single `.d.ts` per entrypoint, consider restructuring so that shared code is not exported directly from multiple entries, or avoid exporting classes with `private` members from shared modules.
