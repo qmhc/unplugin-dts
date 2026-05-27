@@ -52,3 +52,66 @@ defineEmits<{
   // ...more events
 }>()
 ```
+
+## Types from internal monorepo packages are not inlined
+
+In a monorepo, when package A depends on an internal/unpublished package B, the generated `.d.ts` files of package A may still contain `import { ... } from 'packageB'`. After publishing, consumers won't be able to resolve package B since it is not published.
+
+### Recommended workaround
+
+Configure the plugin to directly process the **source code** of the internal package instead of its build outputs. This way, TypeScript emits the types as if they belong to package A itself.
+
+**`vite.config.ts`**:
+
+```ts
+import { defineConfig } from 'vite'
+import dts from 'vite-plugin-dts'
+import { resolve } from 'node:path'
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      // Point to the source entry of the internal package
+      'packageB': resolve(__dirname, '../packageB/src/index.ts'),
+    },
+  },
+  plugins: [
+    dts({
+      // Include the internal package's source files so they are emitted together
+      include: ['src', '../packageB/src'],
+      tsconfigPath: resolve(__dirname, 'tsconfig.app.json'),
+    }),
+  ],
+})
+```
+
+**`tsconfig.app.json`** (or your active tsconfig):
+
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "packageB": ["../packageB/src/index.ts"]
+    }
+  }
+}
+```
+
+> Ensure the internal package's `package.json` includes a valid `version` field (even if `"private": true`), otherwise the workspace resolver may fail to locate the package.
+
+### Alternative: using `bundleTypes.bundledPackages`
+
+If you are already using `bundleTypes: true`, you can ask `@microsoft/api-extractor` to inline specific packages:
+
+```ts
+dts({
+  bundleTypes: {
+    bundledPackages: ['packageB', '@scope/*'],
+  },
+})
+```
+
+However, this has two limitations:
+
+1. It forces all declarations into a **single rolled-up file** per entry, which is not ideal for libraries with multiple entries.
+2. `@microsoft/api-extractor` may fail to inline certain complex types (e.g., cross-file re-exports, Vue-specific types) and throw an "Unable to follow symbol" error.
