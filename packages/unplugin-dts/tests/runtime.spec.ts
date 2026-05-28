@@ -240,4 +240,52 @@ describe('runtime tests', () => {
     expect(content).toContain('setupCounter')
     expect(content).not.toContain("export * from './index'")
   })
+
+  it('should add .js extension to synthetic entry imports for nodenext compatibility', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'package.json'),
+      JSON.stringify({
+        name: 'test',
+        types: 'dist/main.d.ts',
+      }),
+    )
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          strict: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(resolve(tempDir, 'src', 'index.ts'), 'export const foo = 1\n')
+
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      entries: {
+        index: resolve(tempDir, 'src/index.ts'),
+      },
+    })
+
+    await runtime.transform(resolve(tempDir, 'src/index.ts'), '')
+
+    const emittedFiles = await runtime.emitOutput({
+      insertTypesEntry: true,
+      bundleTypes: false,
+    })
+
+    const mainDtsPath = resolve(tempDir, 'dist/main.d.ts')
+    const content = emittedFiles.get(normalizePath(mainDtsPath))
+
+    expect(content).toContain("export * from './index.js'")
+  })
 })

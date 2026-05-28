@@ -754,7 +754,7 @@ export class Runtime {
 
         let fromPath = normalizePath(relative(dirname(entryDtsPath), sourceEntry))
 
-        fromPath = fromPath.replace(dtsRE, '')
+        fromPath = fromPath.replace(dtsRE, (_, prefix) => `.${prefix || ''}js`)
         fromPath = fullRelativeRE.test(fromPath) ? fromPath : `./${fromPath}`
 
         let content = 'export {}\n'
