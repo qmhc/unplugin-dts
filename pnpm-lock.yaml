@@ -114,6 +114,9 @@ importers:
       typescript:
         specifier: 5.8.3
         version: 5.8.3
+      typescript-v6:
+        specifier: npm:typescript@^6.0.0
+        version: typescript@6.0.3
       unbuild:
         specifier: ^3.5.0
         version: 3.6.0(typescript@5.8.3)(vue-tsc@2.2.12(typescript@5.8.3))(vue@3.5.18(typescript@5.8.3))
@@ -5079,6 +5082,11 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
   ufo@1.6.1:
     resolution: {integrity: sha512-9a4/uxlTWJ4+a5i0ooc1rU7C7YOw3wT+UGqdeNNHWnOF9qcMBgLRS+4IYUqbczewFx4mLEig6gawh7X6mFlEkA==}
 
@@ -6721,6 +6729,10 @@ snapshots:
     dependencies:
       '@typescript-eslint/types': 8.38.0
       eslint-visitor-keys: 4.2.1
+
+  '@valibot/to-json-schema@1.0.0(valibot@1.0.0(typescript@5.7.3))':
+    dependencies:
+      valibot: 1.0.0(typescript@5.7.3)
 
   '@valibot/to-json-schema@1.0.0(valibot@1.0.0(typescript@5.8.3))':
     dependencies:
@@ -9948,7 +9960,7 @@ snapshots:
   rolldown@1.0.0-beta.8(typescript@5.7.3):
     dependencies:
       '@oxc-project/types': 0.65.0
-      '@valibot/to-json-schema': 1.0.0(valibot@1.0.0(typescript@5.8.3))
+      '@valibot/to-json-schema': 1.0.0(valibot@1.0.0(typescript@5.7.3))
       ansis: 3.17.0
       valibot: 1.0.0(typescript@5.7.3)
     optionalDependencies:
@@ -10653,6 +10665,8 @@ snapshots:
   typescript@5.8.2: {}
 
   typescript@5.8.3: {}
+
+  typescript@6.0.3: {}
 
   ufo@1.6.1: {}
 

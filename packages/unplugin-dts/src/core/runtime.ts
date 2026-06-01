@@ -5,6 +5,7 @@ import { cpus } from 'node:os'
 
 import ts from './ts-loader.cjs'
 import { createFilter } from '@rollup/pluginutils'
+import { compare } from 'compare-versions'
 import { green, red, yellow } from 'kolorist'
 import { loadProgramProcessor } from './processor'
 import { JsonResolver, SvelteResolver, VueResolver, parseResolvers } from './resolvers'
@@ -273,19 +274,24 @@ export class Runtime {
       )
     }
 
+    const emittableSourceFiles = program
+      .getSourceFiles()
+      .filter(maybeEmitted)
+      .map(sourceFile => sourceFile.fileName)
+
+    // TS 6.0 changed the default rootDir to dirname(tsconfig) instead of the common
+    // ancestor of source files, so publicRoot and entryRoot must be computed separately.
+    const sourcePublicPath = queryPublicPath(emittableSourceFiles)
     let publicRoot = compilerOptions.rootDir
       ? ensureAbsolute(resolveConfigDir(compilerOptions.rootDir, root), root)
       : compilerOptions.composite && compilerOptions.configFilePath
         ? dirname(compilerOptions.configFilePath as string)
-        : queryPublicPath(
-          program
-            .getSourceFiles()
-            .filter(maybeEmitted)
-            .map(sourceFile => sourceFile.fileName),
-        ) || (configPath ? dirname(configPath) : root)
+        : compare(ts.version, '6.0.0', '>=') && configPath
+          ? dirname(configPath)
+          : sourcePublicPath || (configPath ? dirname(configPath) : root)
     publicRoot = normalizePath(publicRoot)
 
-    let entryRoot = options.entryRoot || publicRoot
+    let entryRoot = options.entryRoot || sourcePublicPath || publicRoot
     entryRoot = ensureAbsolute(entryRoot, root)
 
     const diagnostics = [
