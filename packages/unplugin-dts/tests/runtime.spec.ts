@@ -283,6 +283,48 @@ describe('runtime tests', () => {
     expect(emittedFiles.has(srcIndexDts)).toBe(false)
   })
 
+  it('should use explicit rootDir as the default entryRoot', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          rootDir: '.',
+          strict: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(resolve(tempDir, 'src', 'index.ts'), 'export const foo = 1\n')
+
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      entries: {
+        index: resolve(tempDir, 'src/index.ts'),
+      },
+    })
+
+    const rootDir = normalizePath(tempDir)
+    expect(normalizePath((runtime as any).publicRoot)).toBe(rootDir)
+    expect(normalizePath((runtime as any).entryRoot)).toBe(rootDir)
+
+    await runtime.transform(resolve(tempDir, 'src/index.ts'), '')
+    const emittedFiles = await runtime.emitOutput({ insertTypesEntry: false })
+
+    const indexDts = normalizePath(resolve(tempDir, 'dist/index.d.ts'))
+    const srcIndexDts = normalizePath(resolve(tempDir, 'dist/src/index.d.ts'))
+
+    expect(emittedFiles.has(indexDts)).toBe(false)
+    expect(emittedFiles.has(srcIndexDts)).toBe(true)
+  })
+
   it('should add .js extension to synthetic entry imports for nodenext compatibility', async () => {
     tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
 

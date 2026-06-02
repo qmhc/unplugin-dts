@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -58,5 +58,50 @@ describe('runtime tests (TypeScript 6)', () => {
 
     expect(emittedFiles.has(normalizePath(resolve(tempDir, 'dist/index.d.ts')))).toBe(true)
     expect(emittedFiles.has(normalizePath(resolve(tempDir, 'dist/src/index.d.ts')))).toBe(false)
+  })
+
+  it('should bundle a non-empty entry declaration when rootDir is not explicitly set', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'package.json'),
+      JSON.stringify({
+        name: 'test',
+        version: '1.0.0',
+        types: 'dist/index.d.ts',
+      }),
+    )
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          strict: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(resolve(tempDir, 'src', 'index.ts'), 'export const foo = 1\n')
+
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      entries: {
+        index: resolve(tempDir, 'src/index.ts'),
+      },
+    })
+
+    await runtime.transform(resolve(tempDir, 'src/index.ts'), '')
+    const emittedFiles = await runtime.emitOutput({ bundleTypes: true })
+
+    const indexDts = normalizePath(resolve(tempDir, 'dist/index.d.ts'))
+    const content = emittedFiles.get(indexDts) ?? readFileSync(indexDts, 'utf-8')
+
+    expect(content).toContain('foo')
+    expect(content.trim()).not.toBe('export { }')
   })
 })

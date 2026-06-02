@@ -282,16 +282,22 @@ export class Runtime {
     // TS 6.0 changed the default rootDir to dirname(tsconfig) instead of the common
     // ancestor of source files, so publicRoot and entryRoot must be computed separately.
     const sourcePublicPath = queryPublicPath(emittableSourceFiles)
+    const useTs6ImplicitRootDir =
+      !compilerOptions.rootDir &&
+      !(compilerOptions.composite && compilerOptions.configFilePath) &&
+      compare(ts.version, '6.0.0', '>=') &&
+      !!configPath
     let publicRoot = compilerOptions.rootDir
       ? ensureAbsolute(resolveConfigDir(compilerOptions.rootDir, root), root)
       : compilerOptions.composite && compilerOptions.configFilePath
         ? dirname(compilerOptions.configFilePath as string)
-        : compare(ts.version, '6.0.0', '>=') && configPath
+        : useTs6ImplicitRootDir
           ? dirname(configPath)
           : sourcePublicPath || (configPath ? dirname(configPath) : root)
     publicRoot = normalizePath(publicRoot)
 
-    let entryRoot = options.entryRoot || sourcePublicPath || publicRoot
+    let entryRoot =
+      options.entryRoot || (useTs6ImplicitRootDir ? sourcePublicPath || publicRoot : publicRoot)
     entryRoot = ensureAbsolute(entryRoot, root)
 
     const diagnostics = [
