@@ -8,9 +8,9 @@ import { createFilter } from '@rollup/pluginutils'
 import { compare } from 'compare-versions'
 import { green, red, yellow } from 'kolorist'
 import { loadProgramProcessor } from './processor'
+import { createApiExtractorProvider, getHasExtractor, normalizeProvider } from './providers'
 import { JsonResolver, SvelteResolver, VueResolver, parseResolvers } from './resolvers'
 import { hasExportDefault, hasNormalExport, normalizeGlob, transformCode } from './transform'
-import { bundleDtsFiles, getHasExtractor } from './bundle'
 import {
   cleanVueDtsFileName,
   defaultIndex,
@@ -53,6 +53,7 @@ import type {
   AliasOptions,
   CreateRuntimeOptions,
   EmitOptions,
+  ExtractorResult,
   Logger,
   NormalizedOutDir,
 } from './types'
@@ -808,37 +809,43 @@ export class Runtime {
           const compilerOptions = configPath
             ? getTsConfig(configPath, this.host.readFile).compilerOptions
             : rawCompilerOptions
-
-          const rollup = async (path: string) => {
-            const result = await bundleDtsFiles({
-              root,
+          const provider = normalizeProvider(
+            createApiExtractorProvider({
               // api-extractor.json
               configPath: bundleConfigPath,
+              extractorConfig,
+              bundledPackages,
+              invokeOptions,
+            }),
+          )
+
+          const bundleEntry = async (path: string) => {
+            const result = await provider.bundle({
+              root,
               // tsconfig.json
               tsconfigPath: configPath,
               compilerOptions,
               outDir,
               entryPath: path,
+              outputPath: path,
               // fileName 已经包含正确的后缀（.d.ts / .d.cts / .d.mts）
               fileName: basename(path),
               libFolder: getTsLibFolder(),
-              extractorConfig,
-              bundledPackages,
-              invokeOptions,
+              logger,
             })
 
             emittedFiles.delete(path)
             rollupFiles.add(path)
 
             if (typeof afterRollup === 'function') {
-              await unwrapPromise(afterRollup(result))
+              await unwrapPromise(afterRollup(result.meta as ExtractorResult))
             }
           }
 
           if (multiple) {
             await runParallel(cpus().length, entryNames, async name => {
               // 使用正确的后缀生成打包文件路径
-              await rollup(
+              await bundleEntry(
                 cleanPath(
                   resolve(outDir, tsToDtsWithExtension(name, primaryDtsExtension)),
                   emittedFiles,
@@ -847,7 +854,7 @@ export class Runtime {
             })
           } else {
             // typesPath 已经在上面转换为正确的后缀
-            await rollup(typesPath)
+            await bundleEntry(typesPath)
           }
 
           await runParallel(cpus().length, Array.from(emittedFiles.keys()), f => unlink(f))

@@ -1,20 +1,31 @@
-import { ensureAbsolute, mergeObjects, resolve, tryGetPackageInfo, tryGetPkgPath } from './utils'
+import { ensureAbsolute, mergeObjects, resolve, tryGetPackageInfo, tryGetPkgPath } from '../utils'
 
 import type { ExtractorLogLevel, IConfigFile } from '@microsoft/api-extractor'
-import type { BundleConfig, ExtractorInvokeOptions } from './types'
+import type { BundleConfig, ExtractorInvokeOptions, ExtractorResult } from '../types'
+import type { BundleTypesProvider, BundleTypesProviderResult } from './types'
 
-export interface BundleDtsOptions {
+export interface ApiExtractorBundleOptions {
   root: string,
   configPath?: string,
   tsconfigPath?: string,
   compilerOptions: Record<string, any>,
   outDir: string,
   entryPath: string,
+  outputPath?: string,
   fileName: string,
   libFolder?: string,
   extractorConfig?: BundleConfig,
   bundledPackages?: string[],
   invokeOptions?: ExtractorInvokeOptions,
+}
+
+export type ApiExtractorProviderOptions = Pick<
+  ApiExtractorBundleOptions,
+  'configPath' | 'extractorConfig' | 'bundledPackages' | 'invokeOptions'
+>
+
+export interface ApiExtractorProviderResult extends BundleTypesProviderResult {
+  meta: ExtractorResult,
 }
 
 let hasExtractor: boolean | undefined
@@ -34,12 +45,13 @@ export async function bundleDtsFiles({
   compilerOptions,
   outDir,
   entryPath,
+  outputPath,
   fileName,
   libFolder,
   extractorConfig = {},
   bundledPackages,
   invokeOptions = {},
-}: BundleDtsOptions) {
+}: ApiExtractorBundleOptions) {
   const { Extractor, ExtractorConfig } = await import('@microsoft/api-extractor')
 
   configPath = configPath ? ensureAbsolute(configPath, root) : ''
@@ -74,7 +86,7 @@ export async function bundleDtsFiles({
     },
     dtsRollup: {
       enabled: true,
-      publicTrimmedFilePath: resolve(outDir, fileName),
+      publicTrimmedFilePath: outputPath ?? resolve(outDir, fileName),
     },
     tsdocMetadata: {
       enabled: false,
@@ -135,5 +147,40 @@ export async function bundleDtsFiles({
     }
 
     throw error
+  }
+}
+
+export function createApiExtractorProvider({
+  configPath,
+  extractorConfig,
+  bundledPackages,
+  invokeOptions,
+}: ApiExtractorProviderOptions): BundleTypesProvider {
+  return {
+    name: 'api-extractor',
+    async bundle(context) {
+      const result = await bundleDtsFiles({
+        root: context.root,
+        configPath,
+        tsconfigPath: context.tsconfigPath,
+        compilerOptions: context.compilerOptions,
+        outDir: context.outDir,
+        entryPath: context.entryPath,
+        outputPath: context.outputPath,
+        fileName: context.fileName,
+        libFolder: context.libFolder,
+        extractorConfig,
+        bundledPackages,
+        invokeOptions,
+      })
+
+      return {
+        succeeded: result.succeeded,
+        warningCount: result.warningCount,
+        errorCount: result.errorCount,
+        outputPath: context.outputPath,
+        meta: result,
+      } satisfies ApiExtractorProviderResult
+    },
   }
 }

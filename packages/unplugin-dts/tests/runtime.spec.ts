@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -371,5 +371,61 @@ describe('runtime tests', () => {
     const content = emittedFiles.get(normalizePath(mainDtsPath))
 
     expect(content).toContain("export * from './index.js'")
+  })
+
+  it('should bundle nested multiple entries back to their entry declaration paths', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'package.json'),
+      JSON.stringify({
+        name: 'test',
+        version: '1.0.0',
+      }),
+    )
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          strict: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(resolve(tempDir, 'src', 'button.ts'), 'export const button = "button"\n')
+    writeFileSync(resolve(tempDir, 'src', 'input.ts'), 'export const input = "input"\n')
+
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      entries: {
+        'components/button': resolve(tempDir, 'src/button.ts'),
+        'fields/input': resolve(tempDir, 'src/input.ts'),
+      },
+    })
+
+    await runtime.transform(resolve(tempDir, 'src/button.ts'), '')
+    await runtime.transform(resolve(tempDir, 'src/input.ts'), '')
+
+    const emittedFiles = await runtime.emitOutput({ bundleTypes: true })
+
+    const buttonDtsPath = normalizePath(resolve(tempDir, 'dist/components/button.d.ts'))
+    const inputDtsPath = normalizePath(resolve(tempDir, 'dist/fields/input.d.ts'))
+
+    const buttonContent = emittedFiles.get(buttonDtsPath) ?? readFileSync(buttonDtsPath, 'utf-8')
+    const inputContent = emittedFiles.get(inputDtsPath) ?? readFileSync(inputDtsPath, 'utf-8')
+
+    expect(buttonContent).toContain('button')
+    expect(inputContent).toContain('input')
+    expect(buttonContent).not.toContain("export * from '../button.js'")
+    expect(inputContent).not.toContain("export * from '../input.js'")
+    expect(existsSync(resolve(tempDir, 'dist/button.d.ts'))).toBe(false)
+    expect(existsSync(resolve(tempDir, 'dist/input.d.ts'))).toBe(false)
   })
 })
