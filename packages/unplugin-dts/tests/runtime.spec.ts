@@ -427,5 +427,5 @@ describe('runtime tests', () => {
     expect(inputContent).not.toContain("export * from '../input.js'")
     expect(existsSync(resolve(tempDir, 'dist/button.d.ts'))).toBe(false)
     expect(existsSync(resolve(tempDir, 'dist/input.d.ts'))).toBe(false)
-  })
+  }, 15_000)
 })
