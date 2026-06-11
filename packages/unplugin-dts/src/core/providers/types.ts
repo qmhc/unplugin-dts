@@ -1,7 +1,7 @@
 import type { Logger } from '../types'
 import type { MaybePromise } from '../utils'
 
-export interface BundleTypesProviderContext {
+export interface BundleProviderContext {
   root: string,
   tsconfigPath?: string,
   compilerOptions: Record<string, any>,
@@ -13,7 +13,7 @@ export interface BundleTypesProviderContext {
   logger: Logger,
 }
 
-export interface BundleTypesProviderResult {
+export interface BundleProviderResult {
   succeeded: boolean,
   warningCount?: number,
   errorCount?: number,
@@ -21,13 +21,13 @@ export interface BundleTypesProviderResult {
   meta?: unknown,
 }
 
-export type BundleTypesProviderFn = (
-  context: BundleTypesProviderContext
-) => MaybePromise<BundleTypesProviderResult>
+export type BundleProviderFn = (
+  context: BundleProviderContext
+) => MaybePromise<BundleProviderResult>
 
-export interface BundleTypesProvider {
+export interface BundleProvider {
   name?: string,
-  bundle: BundleTypesProviderFn,
+  bundle: BundleProviderFn,
 }
 
-export type BundleTypesProviderLike = BundleTypesProvider | BundleTypesProviderFn
+export type BundleProviderLike = BundleProvider | BundleProviderFn

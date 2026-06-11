@@ -2,7 +2,7 @@ import { ensureAbsolute, mergeObjects, resolve, tryGetPackageInfo, tryGetPkgPath
 
 import type { ExtractorLogLevel, IConfigFile } from '@microsoft/api-extractor'
 import type { BundleConfig, ExtractorInvokeOptions, ExtractorResult } from '../types'
-import type { BundleTypesProvider, BundleTypesProviderResult } from './types'
+import type { BundleProvider, BundleProviderResult } from './types'
 
 export interface ApiExtractorBundleOptions {
   root: string,
@@ -24,7 +24,7 @@ export type ApiExtractorProviderOptions = Pick<
   'configPath' | 'extractorConfig' | 'bundledPackages' | 'invokeOptions'
 >
 
-export interface ApiExtractorProviderResult extends BundleTypesProviderResult {
+export interface ApiExtractorProviderResult extends BundleProviderResult {
   meta: ExtractorResult,
 }
 
@@ -155,7 +155,7 @@ export function createApiExtractorProvider({
   extractorConfig,
   bundledPackages,
   invokeOptions,
-}: ApiExtractorProviderOptions): BundleTypesProvider {
+}: ApiExtractorProviderOptions): BundleProvider {
   return {
     name: 'api-extractor',
     async bundle(context) {
