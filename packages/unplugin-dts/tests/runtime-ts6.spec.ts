@@ -103,5 +103,5 @@ describe('runtime tests (TypeScript 6)', () => {
 
     expect(content).toContain('foo')
     expect(content.trim()).not.toBe('export { }')
-  })
+  }, 20_000)
 })

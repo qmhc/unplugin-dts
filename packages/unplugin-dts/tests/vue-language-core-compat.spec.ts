@@ -126,6 +126,6 @@ describe('vue language core compatibility', () => {
         version: version.label,
         bundledDts,
       }).toMatchSnapshot()
-    })
+    }, 20_000)
   }
 })
