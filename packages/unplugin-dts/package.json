@@ -131,7 +131,7 @@
   "peerDependencies": {
     "@microsoft/api-extractor": ">=7",
     "@rspack/core": "^1",
-    "@vue/language-core": "~3.1.5",
+    "@vue/language-core": "^3.1.5",
     "esbuild": "*",
     "rolldown": "*",
     "rollup": ">=3",
