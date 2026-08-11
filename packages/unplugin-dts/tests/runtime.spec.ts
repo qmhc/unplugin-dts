@@ -428,4 +428,71 @@ describe('runtime tests', () => {
     expect(existsSync(resolve(tempDir, 'dist/button.d.ts'))).toBe(false)
     expect(existsSync(resolve(tempDir, 'dist/input.d.ts'))).toBe(false)
   }, 15_000)
+
+  it('should bundle multiple entries when declarations are missing or empty', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'package.json'),
+      JSON.stringify({
+        name: 'test',
+        version: '1.0.0',
+      }),
+    )
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          strict: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(
+      resolve(tempDir, 'src', 'index.ts'),
+      'export const value = "value"\ndeclare global { interface Window { value: string } }\n',
+    )
+    writeFileSync(resolve(tempDir, 'src', 'side-effect.ts'), "import './internal'\n")
+    writeFileSync(resolve(tempDir, 'src', 'empty-module.ts'), "import './internal'\nexport {}\n")
+    writeFileSync(resolve(tempDir, 'src', 'internal.ts'), 'console.log("internal")\n')
+    writeFileSync(resolve(tempDir, 'src', 'excluded.ts'), 'console.log("excluded")\n')
+
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      include: ['src/index.ts', 'src/side-effect.ts', 'src/empty-module.ts'],
+      entries: {
+        index: resolve(tempDir, 'src/index.ts'),
+        'side-effect': resolve(tempDir, 'src/side-effect.ts'),
+        'empty-module': resolve(tempDir, 'src/empty-module.ts'),
+        excluded: resolve(tempDir, 'src/excluded.ts'),
+      },
+    })
+
+    await runtime.transform(resolve(tempDir, 'src/index.ts'), '')
+    await runtime.transform(resolve(tempDir, 'src/side-effect.ts'), '')
+    await runtime.transform(resolve(tempDir, 'src/empty-module.ts'), '')
+    await runtime.transform(resolve(tempDir, 'src/excluded.ts'), '')
+
+    const emittedFiles = await runtime.emitOutput({ bundleTypes: true })
+
+    const indexDtsPath = normalizePath(resolve(tempDir, 'dist/index.d.ts'))
+    const sideEffectDtsPath = normalizePath(resolve(tempDir, 'dist/side-effect.d.ts'))
+    const emptyModuleDtsPath = normalizePath(resolve(tempDir, 'dist/empty-module.d.ts'))
+    const excludedDtsPath = normalizePath(resolve(tempDir, 'dist/excluded.d.ts'))
+
+    expect(emittedFiles.get(indexDtsPath)).toContain('value')
+    expect(emittedFiles.get(sideEffectDtsPath)).toMatch(/export\s*\{\s*\}/)
+    expect(emittedFiles.get(emptyModuleDtsPath)).toMatch(/export\s*\{\s*\}/)
+    expect(emittedFiles.get(excludedDtsPath)).toMatch(/export\s*\{\s*\}/)
+    expect(emittedFiles.get(sideEffectDtsPath)).not.toContain('declare global')
+    expect(emittedFiles.get(emptyModuleDtsPath)).not.toContain('declare global')
+    expect(emittedFiles.get(excludedDtsPath)).not.toContain('declare global')
+  }, 15_000)
 })

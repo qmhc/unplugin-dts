@@ -69,6 +69,24 @@ const fixedCompilerOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ESNext,
 }
 
+function isEmptyDeclarationEntry(content: string | undefined) {
+  if (!content?.trim()) return true
+
+  const sourceFile = ts.createSourceFile('entry.d.ts', content, ts.ScriptTarget.Latest)
+
+  return sourceFile.statements.every(statement => {
+    if (ts.isEmptyStatement(statement)) return true
+
+    return (
+      ts.isExportDeclaration(statement) &&
+      !statement.moduleSpecifier &&
+      !!statement.exportClause &&
+      ts.isNamedExports(statement.exportClause) &&
+      statement.exportClause.elements.length === 0
+    )
+  })
+}
+
 function parseAliases(aliasOptions: AliasOptions = [], aliasesExclude: (string | RegExp)[] = []) {
   let aliases: Alias[]
 
@@ -724,6 +742,8 @@ export class Runtime {
       const entryNames = Object.keys(entries)
       const types = findTypesPath(pkg.publishConfig, pkg)
       const multiple = entryNames.length > 1
+      // 空入口无需 API Extractor 处理，避免从整个 TS Program 引入无关的全局声明。
+      const emptyEntryFiles = new Set<string>()
 
       let typesPath = cleanPath(
         types ? resolve(root, types) : resolve(outDir, indexName),
@@ -759,11 +779,20 @@ export class Runtime {
           ),
         )
 
-        if (
-          entryDtsPath === sourceEntry ||
-          (transformed.has(relative(outDir, entryDtsPath)) && existsSync(entryDtsPath))
-        )
+        if (entryDtsPath === sourceEntry) {
+          if (!isEmptyDeclarationEntry(emittedFiles.get(sourceEntry))) continue
+
+          const emptyEntryPath = normalizePath(cleanPath(entryDtsPath, emittedFiles))
+
+          await writeOutput(emptyEntryPath, 'export {}\n', outDir, true, primaryDtsExtension)
+
+          if (emittedFiles.has(emptyEntryPath)) {
+            emptyEntryFiles.add(emptyEntryPath)
+          }
           continue
+        }
+
+        if (transformed.has(relative(outDir, entryDtsPath)) && existsSync(entryDtsPath)) continue
 
         let fromPath = normalizePath(relative(dirname(entryDtsPath), sourceEntry))
 
@@ -771,25 +800,26 @@ export class Runtime {
         fromPath = fullRelativeRE.test(fromPath) ? fromPath : `./${fromPath}`
 
         let content = 'export {}\n'
+        const sourceContent = emittedFiles.get(sourceEntry)
 
-        if (emittedFiles.has(sourceEntry)) {
-          if (hasNormalExport(emittedFiles.get(sourceEntry)!)) {
+        if (typeof sourceContent === 'string') {
+          if (hasNormalExport(sourceContent)) {
             content = `export * from '${fromPath}'\n${content}`
           }
 
-          if (hasExportDefault(emittedFiles.get(sourceEntry)!)) {
+          if (hasExportDefault(sourceContent)) {
             content += `import ${libName} from '${fromPath}'\nexport default ${libName}\n${content}`
           }
         }
 
         // 入口文件已经使用了正确的后缀，无需再次转换
-        await writeOutput(
-          cleanPath(entryDtsPath, emittedFiles),
-          content,
-          outDir,
-          true,
-          primaryDtsExtension,
-        )
+        const syntheticEntryPath = normalizePath(cleanPath(entryDtsPath, emittedFiles))
+
+        await writeOutput(syntheticEntryPath, content, outDir, true, primaryDtsExtension)
+
+        if (isEmptyDeclarationEntry(sourceContent) && emittedFiles.has(syntheticEntryPath)) {
+          emptyEntryFiles.add(syntheticEntryPath)
+        }
       }
 
       handleDebug('insert index')
@@ -820,6 +850,10 @@ export class Runtime {
           )
 
           const bundleEntry = async (path: string) => {
+            path = normalizePath(path)
+
+            if (emptyEntryFiles.has(path)) return
+
             const result = await provider.bundle({
               root,
               // tsconfig.json
@@ -857,9 +891,20 @@ export class Runtime {
             await bundleEntry(typesPath)
           }
 
-          await runParallel(cpus().length, Array.from(emittedFiles.keys()), f => unlink(f))
+          const emptyEntries = new Map(
+            Array.from(emittedFiles).filter(([filePath]) => emptyEntryFiles.has(filePath)),
+          )
+          const unbundledFiles = Array.from(emittedFiles.keys()).filter(
+            filePath => !emptyEntryFiles.has(filePath),
+          )
+
+          await runParallel(cpus().length, unbundledFiles, f => unlink(f))
           removeDirIfEmpty(outDir)
           emittedFiles.clear()
+
+          for (const [filePath, content] of emptyEntries) {
+            emittedFiles.set(filePath, content)
+          }
 
           const declared = declareModules.join('\n')
 
