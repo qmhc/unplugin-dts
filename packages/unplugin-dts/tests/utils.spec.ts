@@ -2,6 +2,7 @@ import { normalize, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
+import ts from '../src/core/ts-loader.cjs'
 import {
   base64VLQEncode,
   ensureAbsolute,
@@ -18,6 +19,7 @@ import {
   parseTsAliases,
   queryPublicPath,
   resolveConfigDir,
+  setModuleResolution,
   toCapitalCase,
   transformDtsPath,
   transformSourceMappingURL,
@@ -490,5 +492,30 @@ export interface Test {
 export { testFn } from './comment';
 //# sourceMappingURL=index.d.cts.map`,
     )
+  })
+})
+
+describe('setModuleResolution', () => {
+  it('keeps an explicit moduleResolution', () => {
+    const options: ts.CompilerOptions = {
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    }
+    setModuleResolution(options)
+    expect(options.moduleResolution).toBe(ts.ModuleResolutionKind.NodeNext)
+  })
+
+  it('maps an ES5 target to CommonJS module resolution (Node10)', () => {
+    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES5 }
+    setModuleResolution(options)
+    expect(options.moduleResolution).toBe(ts.ModuleResolutionKind.Node10)
+  })
+
+  it('maps an ES2015+ target to ES2015 module resolution', () => {
+    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2020 }
+    setModuleResolution(options)
+    const expected = ts.version.startsWith('5')
+      ? ts.ModuleResolutionKind.Bundler
+      : ts.ModuleResolutionKind.Classic
+    expect(options.moduleResolution).toBe(expected)
   })
 })
