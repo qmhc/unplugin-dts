@@ -49,7 +49,38 @@ function createVueFixture(root: string) {
   )
 
   mkdirSync(resolve(root, 'src'), { recursive: true })
-  writeFileSync(resolve(root, 'src', 'main.ts'), `export { default as App } from './App.vue'\n`)
+  writeFileSync(
+    resolve(root, 'src', 'main.ts'),
+    `import { notify } from './notification'
+
+export { default as App } from './App.vue'
+export const notifyFn = notify.fn
+`,
+  )
+  writeFileSync(
+    resolve(root, 'src', 'notification.ts'),
+    `import Notification from './notification.vue'
+
+export const notify = {
+  fn(props: InstanceType<typeof Notification>['$props']): void {
+    void props.title
+  },
+}
+`,
+  )
+  writeFileSync(
+    resolve(root, 'src', 'notification.vue'),
+    `<script setup lang="ts">
+defineProps<{
+  title: string
+}>()
+</script>
+
+<template>
+  <div>{{ title }}</div>
+</template>
+`,
+  )
   writeFileSync(
     resolve(root, 'src', 'App.vue'),
     `<script setup lang="ts" generic="T extends string">

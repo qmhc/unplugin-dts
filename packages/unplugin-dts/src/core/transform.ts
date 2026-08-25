@@ -256,7 +256,13 @@ export function transformCode(options: {
       }
 
       // s.update(node.pos, node.end, ` ${usedType}`)
-      if (ts.isImportTypeNode(parent) && parent.typeArguments && parent.typeArguments[0] === node) {
+      if (node.isTypeOf) {
+        s.update(node.getStart(ast), node.argument.end + 2, 'typeof ')
+      } else if (
+        ts.isImportTypeNode(parent) &&
+        parent.typeArguments &&
+        parent.typeArguments[0] === node
+      ) {
         s.remove(node.pos, node.argument.end + 2)
       } else {
         s.update(node.pos, node.argument.end + 2, ' ')

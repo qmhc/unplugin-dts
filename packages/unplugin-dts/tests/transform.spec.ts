@@ -67,6 +67,28 @@ describe('transform tests', () => {
     )
 
     expect(
+      transformCode(
+        options('type Props = InstanceType<typeof import("./notification.vue").default>["$props"];'),
+      ).content,
+    ).toEqual(
+      'import { default as __DTS_DEFAULT_0__ } from \'./notification.vue\';\ntype Props = InstanceType<typeof __DTS_DEFAULT_0__>["$props"];',
+    )
+
+    expect(
+      transformCode(options('type Factory = typeof import("./factory").create;')).content,
+    ).toEqual("import { create } from './factory';\ntype Factory = typeof create;")
+
+    expect(
+      transformCode(
+        options(
+          'declare const service: import("./Service").ServiceConstructor<typeof import("./Service").default>;',
+        ),
+      ).content,
+    ).toEqual(
+      "import { ServiceConstructor, default as __DTS_DEFAULT_0__ } from './Service';\ndeclare const service: ServiceConstructor<typeof __DTS_DEFAULT_0__>;",
+    )
+
+    expect(
       transformCode(options('import { Type } from "./test";\nconst test: import("./test").Test;'))
         .content,
     ).toEqual("import { Type, Test } from './test';\nconst test: Test;")

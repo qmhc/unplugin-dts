@@ -19,11 +19,17 @@ declare const __VLS_export: <T extends string>(__VLS_props: NonNullable<Awaited<
     __ctx?: Awaited<typeof __VLS_setup>;
 };
 
+declare const __VLS_export_2: any;
+
 declare type __VLS_PrettifyLocal<T> = {
     [K in keyof T as K]: T[K];
 } & {};
 
 export declare const App: typeof __VLS_export;
+
+declare const _default: typeof __VLS_export_2;
+
+export declare const notifyFn: (props: InstanceType<typeof _default>["$props"]) => void;
 
 export { }
 ",
@@ -50,6 +56,8 @@ declare const __VLS_export: <T extends string>(__VLS_props: NonNullable<Awaited<
     __ctx?: Awaited<typeof __VLS_setup>;
 };
 
+declare const __VLS_export_2: any;
+
 declare type __VLS_PrettifyLocal<T> = (T extends any ? {
     [K in keyof T]: T[K];
 } : {
@@ -57,6 +65,10 @@ declare type __VLS_PrettifyLocal<T> = (T extends any ? {
 }) & {};
 
 export declare const App: typeof __VLS_export;
+
+declare const _default: typeof __VLS_export_2;
+
+export declare const notifyFn: (props: InstanceType<typeof _default>["$props"]) => void;
 
 export { }
 ",
