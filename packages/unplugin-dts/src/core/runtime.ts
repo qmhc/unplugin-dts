@@ -1,7 +1,7 @@
 import { basename, dirname, relative } from 'node:path'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
-import { cpus } from 'node:os'
+import { availableParallelism } from 'node:os'
 
 import ts from './ts-loader.cjs'
 import { createFilter } from '@rollup/pluginutils'
@@ -57,6 +57,8 @@ import type {
   Logger,
   NormalizedOutDir,
 } from './types'
+
+const maxConcurrency = availableParallelism()
 
 const fixedCompilerOptions: ts.CompilerOptions = {
   noEmit: false,
@@ -581,9 +583,7 @@ export class Runtime {
         return
       }
 
-      if (!existsSync(dir)) {
-        await mkdir(dir, { recursive: true })
-      }
+      await mkdir(dir, { recursive: true })
 
       await writeFile(path, content, 'utf-8')
       record && emittedFiles.set(path, content)
@@ -631,7 +631,7 @@ export class Runtime {
     }
 
     await runParallel(
-      cpus().length,
+      maxConcurrency,
       Array.from(declarationFiles.entries()),
       async ([filePath, content]) => {
         let relativePath = relative(
@@ -674,7 +674,7 @@ export class Runtime {
     )
 
     await runParallel(
-      cpus().length,
+      maxConcurrency,
       Array.from(mapFiles.entries()),
       async ([filePath, content]) => {
         const baseDir = dirname(filePath)
@@ -724,9 +724,9 @@ export class Runtime {
     if (insertTypesEntry || bundleTypes) {
       const pkgPath = tryGetPkgPath(root)
 
-      let pkg: any
+      let pkg: any = {}
       try {
-        pkg = pkgPath && existsSync(pkgPath) ? JSON.parse(await readFile(pkgPath, 'utf-8')) : {}
+        if (pkgPath) pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
       } catch (e) {}
 
       // 使用主输出目录的后缀配置
@@ -877,7 +877,7 @@ export class Runtime {
           }
 
           if (multiple) {
-            await runParallel(cpus().length, entryNames, async name => {
+            await runParallel(maxConcurrency, entryNames, async name => {
               // 使用正确的后缀生成打包文件路径
               await bundleEntry(
                 cleanPath(
@@ -898,7 +898,7 @@ export class Runtime {
             filePath => !emptyEntryFiles.has(filePath),
           )
 
-          await runParallel(cpus().length, unbundledFiles, f => unlink(f))
+          await runParallel(maxConcurrency, unbundledFiles, f => unlink(f))
           removeDirIfEmpty(outDir)
           emittedFiles.clear()
 
@@ -908,7 +908,7 @@ export class Runtime {
 
           const declared = declareModules.join('\n')
 
-          await runParallel(cpus().length, [...rollupFiles], async filePath => {
+          await runParallel(maxConcurrency, [...rollupFiles], async filePath => {
             await writeOutput(
               filePath,
               (await readFile(filePath, 'utf-8')) + (declared ? `\n${declared}` : ''),
@@ -926,7 +926,7 @@ export class Runtime {
     if (outDirs.length > 1) {
       const extraOutDirs = outDirs.slice(1)
 
-      await runParallel(cpus().length, Array.from(emittedFiles), async ([wroteFile, content]) => {
+      await runParallel(maxConcurrency, Array.from(emittedFiles), async ([wroteFile, content]) => {
         const relativePath = relative(outDir, wroteFile)
 
         await Promise.all(

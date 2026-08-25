@@ -234,40 +234,43 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
 
       let processor = userProcessor
 
-      const hasVueEntries = entries && Object.values(entries).some(e => e.endsWith('.vue'))
-      let hasVueInTsconfig = false
-      let hasVueInInclude = false
+      let hasVueFiles = userProcessor === 'vue'
 
-      if (!hasVueEntries) {
-        const includeGlobs = ensureArray(include)
-        hasVueInInclude = includeGlobs.some(g => g?.includes('.vue'))
+      if (!hasVueFiles) {
+        const hasVueEntries = entries && Object.values(entries).some(e => e.endsWith('.vue'))
+        let hasVueInTsconfig = false
+        let hasVueInInclude = false
 
-        if (!hasVueInInclude) {
-          const configPath = tsconfigPath
-            ? ensureAbsolute(tsconfigPath, root)
-            : ts.findConfigFile(root, ts.sys.fileExists)
+        if (!hasVueEntries) {
+          const includeGlobs = ensureArray(include)
+          hasVueInInclude = includeGlobs.some(g => g?.includes('.vue'))
 
-          if (configPath) {
-            const config = ts.readJsonConfigFile(configPath, ts.sys.readFile)
-            const raw = ts.parseJsonSourceFileConfigFileContent(
-              config,
-              ts.sys,
-              dirname(configPath),
-              {},
-              configPath,
-            ).raw
+          if (!hasVueInInclude) {
+            const configPath = tsconfigPath
+              ? ensureAbsolute(tsconfigPath, root)
+              : ts.findConfigFile(root, ts.sys.fileExists)
 
-            const tsIncludes = [
-              ...ensureArray(raw?.include ?? []),
-              ...ensureArray(raw?.files ?? []),
-            ]
-            hasVueInTsconfig = tsIncludes.some((g: string) => g.includes('.vue'))
+            if (configPath) {
+              const config = ts.readJsonConfigFile(configPath, ts.sys.readFile)
+              const raw = ts.parseJsonSourceFileConfigFileContent(
+                config,
+                ts.sys,
+                dirname(configPath),
+                {},
+                configPath,
+              ).raw
+
+              const tsIncludes = [
+                ...ensureArray(raw?.include ?? []),
+                ...ensureArray(raw?.files ?? []),
+              ]
+              hasVueInTsconfig = tsIncludes.some((g: string) => g.includes('.vue'))
+            }
           }
         }
-      }
 
-      const hasVueFiles =
-        hasVueEntries || hasVueInInclude || hasVueInTsconfig || hasVueFilesInDir(root)
+        hasVueFiles = hasVueEntries || hasVueInInclude || hasVueInTsconfig || hasVueFilesInDir(root)
+      }
 
       if (!processor && hasVueFiles) {
         processor = 'vue'
