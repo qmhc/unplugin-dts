@@ -416,7 +416,7 @@ export function setModuleResolution(options: CompilerOptions) {
   const module =
     typeof options.module === 'number'
       ? options.module
-      : (options.target ?? ts.ScriptTarget.ES5 >= 2)
+      : (options.target ?? ts.ScriptTarget.ES5) >= ts.ScriptTarget.ES2015
         ? ts.ModuleKind.ES2015
         : ts.ModuleKind.CommonJS
 
