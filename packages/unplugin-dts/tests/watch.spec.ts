@@ -117,6 +117,63 @@ async function waitForViteBundle(watcher: RollupWatcher, timeoutMs: number) {
   })
 }
 
+async function waitForViteStability(
+  watcher: RollupWatcher,
+  timeoutMs: number,
+  quietWindowMs = 500,
+) {
+  return await new Promise<number>((fulfill, reject) => {
+    let bundleEnds = 0
+    let quietTimer: ReturnType<typeof setTimeout> | undefined
+    const timeout = setTimeout(
+      () => finish(new Error('Timed out waiting for Vite watcher stability')),
+      timeoutMs,
+    )
+    function finish(error?: Error) {
+      clearTimeout(timeout)
+      if (quietTimer) clearTimeout(quietTimer)
+      watcher.off('event', onEvent)
+      error ? reject(error) : fulfill(bundleEnds)
+    }
+    function onEvent(event: RollupWatcherEvent) {
+      if (event.code === 'ERROR') {
+        finish(new Error(event.error?.message ?? 'Vite watch failed'))
+        return
+      }
+      if (event.code === 'BUNDLE_START') {
+        if (quietTimer) clearTimeout(quietTimer)
+        quietTimer = undefined
+        return
+      }
+      if (event.code !== 'BUNDLE_END') return
+
+      bundleEnds++
+      if (quietTimer) clearTimeout(quietTimer)
+      quietTimer = setTimeout(() => finish(), quietWindowMs)
+    }
+    watcher.on('event', onEvent)
+  })
+}
+
+async function expectNoViteBundle(watcher: RollupWatcher, quietWindowMs = 500) {
+  await new Promise<void>((fulfill, reject) => {
+    const quietTimer = setTimeout(() => finish(), quietWindowMs)
+    function finish(error?: Error) {
+      clearTimeout(quietTimer)
+      watcher.off('event', onEvent)
+      error ? reject(error) : fulfill()
+    }
+    function onEvent(event: RollupWatcherEvent) {
+      if (event.code === 'ERROR') {
+        finish(new Error(event.error?.message ?? 'Vite watch failed'))
+      } else if (event.code === 'BUNDLE_START' || event.code === 'BUNDLE_END') {
+        finish(new Error('Unexpected Vite rebuild during the quiet window'))
+      }
+    }
+    watcher.on('event', onEvent)
+  })
+}
+
 async function runContextWatch(
   compiler: WatchCompiler,
   root: string,
@@ -491,6 +548,148 @@ describe('real watcher regressions', () => {
     expect(bundles).toBe(2)
     expect(existsSync(resolve(tempDir, 'dist/new.d.ts'))).toBe(true)
   })
+
+  it('should rebuild Vite without feedback for Vue component create, rename, and delete', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-vue-vite-watch-'))
+    const sourceDirectory = resolve(tempDir, 'src')
+    const typesDirectory = resolve(tempDir, 'types')
+    const createdPath = resolve(sourceDirectory, 'Created.vue')
+    const renamedPath = resolve(sourceDirectory, 'Renamed.vue')
+    mkdirSync(sourceDirectory)
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { target: 'ESNext', module: 'ESNext', strict: true },
+        include: ['src/**/*'],
+      }),
+    )
+    writeFileSync(resolve(sourceDirectory, 'index.ts'), 'export const entry = true\n')
+
+    let runtime: Runtime | undefined
+    type WatchChange = {
+      event: string,
+      fileName: string,
+    }
+    const watchChanges: WatchChange[] = []
+    const pendingWatchChanges: WatchChange[] = []
+    const buildInputs: WatchChange[][] = []
+    const outputDirectories = [typesDirectory, resolve(tempDir, 'bundle')].map(normalizePath)
+    const isOutputChange = ({ fileName }: WatchChange) =>
+      outputDirectories.some(
+        directory => fileName === directory || fileName.startsWith(`${directory}/`),
+      )
+    const expectSourceDrivenBuilds = (
+      inputs: readonly WatchChange[][],
+      sourcePaths: readonly string[],
+    ) => {
+      const normalizedSourcePaths = sourcePaths.map(normalizePath)
+      expect(inputs.length).toBeGreaterThan(0)
+      for (const changes of inputs) {
+        expect(changes.length).toBeGreaterThan(0)
+        expect(changes.every(change => normalizedSourcePaths.includes(change.fileName))).toBe(true)
+      }
+    }
+    const watcher = (await build({
+      configFile: false,
+      root: tempDir,
+      logLevel: 'silent',
+      plugins: [
+        {
+          name: 'record-vue-watch-changes',
+          buildStart() {
+            buildInputs.push(pendingWatchChanges.splice(0))
+          },
+          watchChange(id, change) {
+            const fileName = normalizePath(id)
+            const record = { event: change.event, fileName }
+            watchChanges.push(record)
+            pendingWatchChanges.push(record)
+          },
+        },
+        viteDts({
+          root: tempDir,
+          processor: 'vue',
+          declarationOnly: true,
+          outDirs: typesDirectory,
+          afterBootstrap(instance) {
+            runtime = instance
+          },
+        }),
+      ],
+      build: {
+        lib: { entry: resolve(sourceDirectory, 'index.ts'), formats: ['es'], fileName: 'index' },
+        outDir: resolve(tempDir, 'bundle'),
+        emptyOutDir: true,
+        watch: { clearScreen: false },
+      },
+    })) as RollupWatcher
+    let watcherClosed = false
+
+    try {
+      expect(await waitForViteStability(watcher, 10_000)).toBe(1)
+      expect(buildInputs).toEqual([[]])
+
+      const unrelatedFileStability = expectNoViteBundle(watcher)
+      writeFileSync(resolve(tempDir, 'README.md'), '# unrelated root file\n')
+      await unrelatedFileStability
+
+      const beforeCreate = buildInputs.length
+      const createStability = waitForViteStability(watcher, 5_000)
+      writeFileSync(
+        createdPath,
+        '<script setup lang="ts">\ndefineProps<{ created: boolean }>()\n</script>\n',
+      )
+      const createBundles = await createStability
+      const createInputs = buildInputs.slice(beforeCreate)
+      expect(createInputs).toHaveLength(createBundles)
+      expectSourceDrivenBuilds(createInputs, [createdPath])
+      expect(watchChanges).toContainEqual({
+        event: 'create',
+        fileName: normalizePath(createdPath),
+      })
+      expect(watchChanges.some(isOutputChange)).toBe(false)
+      expect(runtime?.getProgram().getSourceFile(normalizePath(createdPath))).toBeDefined()
+      expect(existsSync(resolve(typesDirectory, 'Created.vue.d.ts'))).toBe(true)
+
+      const beforeRename = buildInputs.length
+      const renameStability = waitForViteStability(watcher, 5_000)
+      renameSync(createdPath, renamedPath)
+      const renameBundles = await renameStability
+      const renameInputs = buildInputs.slice(beforeRename)
+      expect(renameInputs).toHaveLength(renameBundles)
+      expectSourceDrivenBuilds(renameInputs, [createdPath, renamedPath])
+      expect(watchChanges).toEqual(
+        expect.arrayContaining([
+          { event: 'delete', fileName: normalizePath(createdPath) },
+          { event: 'create', fileName: normalizePath(renamedPath) },
+        ]),
+      )
+      expect(watchChanges.some(isOutputChange)).toBe(false)
+      expect(runtime?.getProgram().getSourceFile(normalizePath(createdPath))).toBeUndefined()
+      expect(runtime?.getProgram().getSourceFile(normalizePath(renamedPath))).toBeDefined()
+      expect(existsSync(resolve(typesDirectory, 'Created.vue.d.ts'))).toBe(false)
+      expect(existsSync(resolve(typesDirectory, 'Renamed.vue.d.ts'))).toBe(true)
+
+      const beforeDelete = buildInputs.length
+      const deleteStability = waitForViteStability(watcher, 5_000)
+      rmSync(renamedPath)
+      const deleteBundles = await deleteStability
+      const deleteInputs = buildInputs.slice(beforeDelete)
+      expect(deleteInputs).toHaveLength(deleteBundles)
+      expectSourceDrivenBuilds(deleteInputs, [renamedPath])
+      expect(watchChanges).toContainEqual({
+        event: 'delete',
+        fileName: normalizePath(renamedPath),
+      })
+      expect(watchChanges.some(isOutputChange)).toBe(false)
+      expect(runtime?.getProgram().getSourceFile(normalizePath(renamedPath))).toBeUndefined()
+      expect(existsSync(resolve(typesDirectory, 'Renamed.vue.d.ts'))).toBe(false)
+    } finally {
+      await watcher.close()
+      watcherClosed = true
+    }
+    expect(watcherClosed).toBe(true)
+  }, 30_000)
 
   it('should ignore safe Vite bundler and declaration output aliases', async () => {
     tempDir = createTempDirectory('unplugin-dts-vite-alias-watch-')
