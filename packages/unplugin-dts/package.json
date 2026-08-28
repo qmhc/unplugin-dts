@@ -123,6 +123,7 @@
     "@volar/typescript": "^2.4.26",
     "compare-versions": "^6.1.1",
     "debug": "^4.4.0",
+    "glob-to-regexp": "0.4.1",
     "kolorist": "^1.8.0",
     "local-pkg": "^1.1.1",
     "magic-string": "^0.30.17",

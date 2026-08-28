@@ -192,6 +192,69 @@ await build({
 })
 ```
 
+## Watch 模式
+
+推荐将源码目录与 bundler、声明文件的输出目录分开。这样构建工具可以监听源码树中的新增、
+删除和重命名，又不会同时监听生成文件：
+
+```text
+project/
+├── src/
+│   └── index.ts
+├── dist/
+└── types/
+```
+
+当递归源码监听不会解析到生成输出时，Vite、Webpack 和 Rspack 可以发现符合 TypeScript
+配置的新文件。如果输出目录就是源码目录，或者 realpath/symlink 使它与已有源码重叠，插件会
+采用 fail-close：继续精确监听已有源码，但新增未引用文件后可能需要重启 watcher。这可以避免
+生成文件形成重新构建循环。
+
+当 Webpack 或 Rspack 从干净项目启动并创建嵌套输出目录时，Watchpack 可能执行一次初始补偿
+构建。bootstrap 完成后生成输出会被忽略，因此稳态下的源码新增、删除和重命名不会形成输出
+反馈循环。
+
+源码删除或重命名后，插件会清理上一轮由自身写出、但已不在当前完整输出快照中的声明路径；
+输出目录中的其他文件不会被清理。
+
+纯 Rollup watch 无法在没有调用方配合的情况下安全监听同时包含输出的源码目录。这种布局下，
+新增但未被引用的文件可能不会触发重新构建。优先将源码移入 `src/`。如果暂时不能调整布局，
+请在调用 `rollup.watch` 前忽略所有生成目录，并显式监听类型源码目录：
+
+```js
+import { resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { defineConfig } from 'rollup'
+import typescript from '@rollup/plugin-typescript'
+import dts from 'unplugin-dts/rollup'
+
+const projectRoot = resolve(fileURLToPath(import.meta.url), '..')
+const outputDir = resolve(projectRoot, 'dist')
+
+const watchTypeRoot = {
+  name: 'watch-type-root',
+  buildStart() {
+    if (this.meta.watchMode) this.addWatchFile(projectRoot)
+  },
+}
+
+export default defineConfig({
+  input: resolve(projectRoot, 'index.ts'),
+  output: { dir: outputDir, format: 'es' },
+  watch: {
+    chokidar: {
+      ignored: path => path === outputDir || path.startsWith(`${outputDir}${sep}`),
+    },
+  },
+  plugins: [watchTypeRoot, typescript(), dts({ root: projectRoot })],
+})
+```
+
+如果声明文件使用不同目录，或配置了多个输出目录，需要在 ignored 判断中覆盖每一个生成目录。
+Rolldown 当前无法通过目录 `addWatchFile` 发现 watch 启动后创建的未引用文件。请从已有的受监听
+模块中导入或引用新文件，或者在新增、删除、重命名这类文件后重启 watcher。
+
 ## 打包类型
 
 默认情况下，生成的类型文件会跟随源文件的结构。

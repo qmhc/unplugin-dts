@@ -159,6 +159,9 @@ importers:
       esbuild:
         specifier: '*'
         version: 0.25.8
+      glob-to-regexp:
+        specifier: 0.4.1
+        version: 0.4.1
       kolorist:
         specifier: ^1.8.0
         version: 1.8.0
