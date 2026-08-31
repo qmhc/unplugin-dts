@@ -550,7 +550,7 @@ describe('real watcher regressions', () => {
   })
 
   it('should rebuild Vite without feedback for Vue component create, rename, and delete', async () => {
-    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-vue-vite-watch-'))
+    tempDir = createTempDirectory('unplugin-dts-vue-vite-watch-')
     const sourceDirectory = resolve(tempDir, 'src')
     const typesDirectory = resolve(tempDir, 'types')
     const createdPath = resolve(sourceDirectory, 'Created.vue')
