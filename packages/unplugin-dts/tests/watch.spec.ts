@@ -92,6 +92,10 @@ function writeFixture(root: string, include: string, entry: string) {
   writeFileSync(resolve(root, entry), 'export const entry = true\n')
 }
 
+function createTempDirectory(prefix: string) {
+  return mkdtempSync(resolve(realpathSync.native(tmpdir()), prefix))
+}
+
 async function waitForViteBundle(watcher: RollupWatcher, timeoutMs: number) {
   return await new Promise<void>((fulfill, reject) => {
     const timer = setTimeout(
@@ -449,7 +453,7 @@ describe('real watcher regressions', () => {
   })
 
   it('should rebuild Vite for a new root-level file with the default outDir', async () => {
-    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-vite-watch-'))
+    tempDir = createTempDirectory('unplugin-dts-vite-watch-')
     writeFixture(tempDir, '*.ts', 'index.ts')
     const plugin = viteDts({
       root: tempDir,
@@ -489,7 +493,7 @@ describe('real watcher regressions', () => {
   })
 
   it('should ignore safe Vite bundler and declaration output aliases', async () => {
-    tempDir = mkdtempSync(resolve(realpathSync(tmpdir()), 'unplugin-dts-vite-alias-watch-'))
+    tempDir = createTempDirectory('unplugin-dts-vite-alias-watch-')
     const realOutputDirectory = resolve(tempDir, 'real-output')
     const outputLink = resolve(tempDir, 'bundle')
     const declarationDirectory = resolve(outputLink, 'types')
@@ -536,7 +540,7 @@ describe('real watcher regressions', () => {
   })
 
   it('should keep exact Vite source watches when declaration outDir contains the source', async () => {
-    tempDir = mkdtempSync(resolve(realpathSync(tmpdir()), 'unplugin-dts-vite-overlap-'))
+    tempDir = createTempDirectory('unplugin-dts-vite-overlap-')
     writeFixture(tempDir, '*.ts', 'index.ts')
     const sourcePath = resolve(tempDir, 'index.ts')
     let runtime: any
@@ -581,7 +585,7 @@ describe('real watcher regressions', () => {
   })
 
   it('should fail closed when a Rollup output alias is nested in a source directory', async () => {
-    tempDir = mkdtempSync(resolve(realpathSync(tmpdir()), 'unplugin-dts-rollup-alias-watch-'))
+    tempDir = createTempDirectory('unplugin-dts-rollup-alias-watch-')
     const sourceDirectory = resolve(tempDir, 'src')
     const realOutputDirectory = resolve(sourceDirectory, 'generated')
     const outputLink = resolve(tempDir, 'bundle')
@@ -614,7 +618,7 @@ describe('real watcher regressions', () => {
   })
 
   it('should resolve the nearest existing output symlink ancestor for Webpack watch', async () => {
-    tempDir = mkdtempSync(resolve(realpathSync(tmpdir()), 'unplugin-dts-symlink-parent-watch-'))
+    tempDir = createTempDirectory('unplugin-dts-symlink-parent-watch-')
     const projectRoot = resolve(tempDir, 'project')
     const sourceDirectory = resolve(projectRoot, 'src')
     const outputLink = resolve(projectRoot, 'bundle')
@@ -641,7 +645,7 @@ describe('real watcher regressions', () => {
   ] as const)(
     'should safely watch a root-level %s source context with bounded bootstrap rebuilds',
     async (_, createDts, createCompiler) => {
-      tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-output-watch-'))
+      tempDir = createTempDirectory('unplugin-dts-output-watch-')
       const projectRoot = resolve(tempDir, 'project')
       mkdirSync(projectRoot)
       writeFixture(projectRoot, '*.ts', 'index.ts')
@@ -672,7 +676,7 @@ describe('real watcher regressions', () => {
   )
 
   it('should fail closed when the Rspack output symlink resolves into the source tree', async () => {
-    tempDir = mkdtempSync(resolve(realpathSync(tmpdir()), 'unplugin-dts-symlink-watch-'))
+    tempDir = createTempDirectory('unplugin-dts-symlink-watch-')
     const projectRoot = resolve(tempDir, 'project')
     const sourceDirectory = resolve(projectRoot, 'src')
     const outputDirectory = resolve(projectRoot, 'bundle')

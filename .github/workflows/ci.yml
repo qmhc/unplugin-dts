@@ -65,29 +65,5 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      - name: Preserve Vitest worker exit diagnostics
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $vitestPool = Get-ChildItem -Path 'node_modules/.pnpm/vitest@4.1.5_*/node_modules/vitest/dist/chunks/cli-api.*.js' | Select-Object -First 1
-          if (-not $vitestPool) {
-            throw 'Unable to locate the Vitest pool implementation'
-          }
-
-          $content = [System.IO.File]::ReadAllText($vitestPool.FullName)
-          $patched = $content.Replace(
-            'emitUnexpectedExit = () => {',
-            'emitUnexpectedExit = (code, signal) => { console.error("[vitest-worker-exit]", { code, signal });'
-          )
-          if ($patched -eq $content) {
-            throw 'Unable to patch the Vitest worker exit handler'
-          }
-
-          [System.IO.File]::WriteAllText(
-            $vitestPool.FullName,
-            $patched,
-            [System.Text.UTF8Encoding]::new($false)
-          )
-
       - name: Test
         run: pnpm run test
