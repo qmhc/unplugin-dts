@@ -1,18 +1,42 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { Runtime } from '../src/core/runtime'
+import {
+  Runtime,
+  getRuntimeWatchTargets,
+  isCanonicalPathEqualOrInside,
+  rebuildRuntimeProgram,
+} from '../src/core/runtime'
 import { normalizePath } from '../src/core/utils'
+
+function emitDeclarations(program: ReturnType<Runtime['getProgram']>) {
+  const declarations = new Map<string, string>()
+  program.emit(
+    undefined,
+    (fileName, content) => declarations.set(normalizePath(fileName), content),
+    undefined,
+    true,
+  )
+  return [...declarations].sort(([left], [right]) => left.localeCompare(right))
+}
 
 describe('runtime tests', () => {
   let tempDir: string
 
   afterEach(() => {
+    vi.unstubAllEnvs()
     if (tempDir) {
       rmSync(tempDir, { recursive: true, force: true })
     }
+  })
+
+  it('should compare descendants of filesystem roots without duplicating separators', () => {
+    expect(isCanonicalPathEqualOrInside('/project/src', '/')).toBe(true)
+    expect(isCanonicalPathEqualOrInside('C:/project/src', 'C:/')).toBe(true)
+    expect(isCanonicalPathEqualOrInside('//server/share/project/src', '//server/share/')).toBe(true)
+    expect(isCanonicalPathEqualOrInside('/other/src', '/project')).toBe(false)
   })
 
   it('should resolve paths relative to tsconfig dir when baseUrl is absent', async () => {
@@ -154,6 +178,364 @@ describe('runtime tests', () => {
     })
 
     expect((runtime as any).aliasesExclude).toEqual(aliasesExclude)
+  })
+
+  it('should reuse unchanged SourceFile identities for leaf and dependency updates', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    mkdirSync(resolve(tempDir, 'src'))
+    const indexPath = resolve(tempDir, 'src/index.ts')
+    const commonPath = resolve(tempDir, 'src/common.ts')
+    const leafPath = resolve(tempDir, 'src/leaf.ts')
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { strict: true }, include: ['src/**/*'] }),
+    )
+    writeFileSync(indexPath, "export { common } from './common'\nexport { leaf } from './leaf'\n")
+    writeFileSync(commonPath, "export const common = 'before'\n")
+    writeFileSync(leafPath, "export const leaf = 'before'\n")
+
+    const runtime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+    })
+    expect(getRuntimeWatchTargets(runtime).directories).toContain(
+      normalizePath(resolve(tempDir, 'src')),
+    )
+    const initialProgram = runtime.getProgram()
+    const initialIndex = initialProgram.getSourceFile(normalizePath(indexPath))!
+    const initialCommon = initialProgram.getSourceFile(normalizePath(commonPath))!
+    const initialLeaf = initialProgram.getSourceFile(normalizePath(leafPath))!
+
+    writeFileSync(leafPath, "export const leaf = 'after'\n")
+    rebuildRuntimeProgram(runtime, { fileName: leafPath, event: 'update' })
+
+    const leafProgram = runtime.getProgram()
+    expect(leafProgram.getSourceFile(normalizePath(indexPath))).toBe(initialIndex)
+    expect(leafProgram.getSourceFile(normalizePath(commonPath))).toBe(initialCommon)
+    expect(leafProgram.getSourceFile(normalizePath(leafPath))).not.toBe(initialLeaf)
+
+    const leafAfterFirstUpdate = leafProgram.getSourceFile(normalizePath(leafPath))!
+    const declarationsBeforeCommonUpdate = emitDeclarations(leafProgram)
+    writeFileSync(commonPath, "export const common = 'after'\n")
+    rebuildRuntimeProgram(runtime, { fileName: commonPath, event: 'update' })
+
+    expect(runtime.getProgram().getSourceFile(normalizePath(commonPath))).not.toBe(initialCommon)
+    expect(runtime.getProgram().getSourceFile(normalizePath(leafPath))).toBe(leafAfterFirstUpdate)
+
+    const incrementalDeclarations = emitDeclarations(runtime.getProgram())
+    const freshRuntime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+    })
+    const freshDeclarations = emitDeclarations(freshRuntime.getProgram())
+    expect(incrementalDeclarations).toEqual(freshDeclarations)
+    expect(incrementalDeclarations).not.toEqual(declarationsBeforeCommonUpdate)
+  })
+
+  it('should distinguish exact and recursive watches around output overlaps', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    const sourceDirectory = resolve(tempDir, 'src')
+    const sourcePath = resolve(sourceDirectory, 'index.ts')
+    mkdirSync(sourceDirectory)
+    writeFileSync(resolve(tempDir, 'tsconfig.json'), JSON.stringify({ files: ['src/index.ts'] }))
+    writeFileSync(sourcePath, 'export const value = true\n')
+
+    const runtime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      outDirs: resolve(tempDir, 'types'),
+      tsconfigPath: 'tsconfig.json',
+    })
+
+    const watchTargets = getRuntimeWatchTargets(runtime)
+    expect(watchTargets.files).toContain(normalizePath(sourcePath))
+    expect(watchTargets.directories).toContain(normalizePath(sourceDirectory))
+    expect(watchTargets.contextDirectories).toContain(normalizePath(sourceDirectory))
+    const overlappingRuntime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      outDirs: tempDir,
+      tsconfigPath: 'tsconfig.json',
+    })
+    const overlappingTargets = getRuntimeWatchTargets(overlappingRuntime)
+    expect(overlappingTargets.directories).not.toContain(normalizePath(sourceDirectory))
+    expect(overlappingTargets.contextDirectories).not.toContain(normalizePath(sourceDirectory))
+
+    const rootSourcePath = resolve(tempDir, 'index.ts')
+    writeFileSync(resolve(tempDir, 'tsconfig.json'), JSON.stringify({ include: ['*.ts'] }))
+    writeFileSync(rootSourcePath, 'export const rootValue = true\n')
+
+    const ancestorRuntime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      outDirs: resolve(tempDir, 'dist'),
+      tsconfigPath: 'tsconfig.json',
+    })
+    const ancestorTargets = getRuntimeWatchTargets(ancestorRuntime)
+
+    expect(ancestorTargets.files).toContain(normalizePath(rootSourcePath))
+    expect(ancestorTargets.directories).toContain(normalizePath(tempDir))
+    expect(ancestorTargets.contextDirectories).not.toContain(normalizePath(tempDir))
+  })
+
+  it('should refresh complete diagnostics after incremental rebuilds', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    const sourcePath = resolve(tempDir, 'index.ts')
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { strict: true }, include: ['index.ts'] }),
+    )
+    writeFileSync(sourcePath, "export const value: string = 'valid'\n")
+
+    const runtime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      logger: { info() {}, warn() {}, error() {} },
+    })
+    const freshDiagnosticCodes = async () => {
+      const freshRuntime = await Runtime.toInstance({
+        processor: 'ts',
+        root: tempDir,
+        tsconfigPath: 'tsconfig.json',
+        logger: { info() {}, warn() {}, error() {} },
+      })
+      return freshRuntime
+        .getDiagnostics()
+        .map(diagnostic => diagnostic.code)
+        .sort((left, right) => left - right)
+    }
+
+    writeFileSync(sourcePath, 'export const value: string = 1\n')
+    rebuildRuntimeProgram(runtime, { fileName: sourcePath, event: 'update' })
+    let diagnosticCodes = runtime
+      .getDiagnostics()
+      .map(diagnostic => diagnostic.code)
+      .sort((left, right) => left - right)
+    expect(diagnosticCodes).toEqual(await freshDiagnosticCodes())
+    expect(diagnosticCodes).toContain(2322)
+
+    writeFileSync(sourcePath, "export const value: string = 'fixed'\n")
+    rebuildRuntimeProgram(runtime, { fileName: sourcePath, event: 'update' })
+    diagnosticCodes = runtime
+      .getDiagnostics()
+      .map(diagnostic => diagnostic.code)
+      .sort((left, right) => left - right)
+    expect(diagnosticCodes).toEqual(await freshDiagnosticCodes())
+    expect(diagnosticCodes).not.toContain(2322)
+  })
+
+  it('should use fresh fallback for root-set and tsconfig changes', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    mkdirSync(resolve(tempDir, 'src'))
+    mkdirSync(resolve(tempDir, 'extra'))
+    const configPath = resolve(tempDir, 'tsconfig.json')
+    const initialPath = resolve(tempDir, 'src/index.ts')
+    const addedPath = resolve(tempDir, 'src/added.ts')
+    const extraPath = resolve(tempDir, 'extra/extra.ts')
+
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        compilerOptions: { paths: { '@/*': ['./src/*'] } },
+        include: ['src/**/*'],
+      }),
+    )
+    writeFileSync(initialPath, 'export const initial = true\n')
+    writeFileSync(extraPath, 'export const extra = true\n')
+
+    const runtime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      pathsToAliases: true,
+    })
+    let previousHost = runtime.getHost()
+    let previousInitialSource = runtime.getProgram().getSourceFile(normalizePath(initialPath))!
+
+    writeFileSync(addedPath, 'export const added = true\n')
+    rebuildRuntimeProgram(runtime, { fileName: addedPath, event: 'create' })
+    expect(runtime.getHost()).not.toBe(previousHost)
+    expect(runtime.getProgram().getSourceFile(normalizePath(initialPath))).not.toBe(
+      previousInitialSource,
+    )
+    expect(runtime.getProgram().getSourceFile(normalizePath(addedPath))).toBeDefined()
+
+    previousHost = runtime.getHost()
+    previousInitialSource = runtime.getProgram().getSourceFile(normalizePath(initialPath))!
+    rmSync(addedPath)
+    rebuildRuntimeProgram(runtime, { fileName: addedPath, event: 'delete' })
+    expect(runtime.getHost()).not.toBe(previousHost)
+    expect(runtime.getProgram().getSourceFile(normalizePath(initialPath))).not.toBe(
+      previousInitialSource,
+    )
+    expect(runtime.getProgram().getSourceFile(normalizePath(addedPath))).toBeUndefined()
+
+    previousHost = runtime.getHost()
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        compilerOptions: { baseUrl: '.', paths: { '#/*': ['./extra/*'] } },
+        files: ['extra/extra.ts'],
+        exclude: ['src/**/*'],
+      }),
+    )
+    rebuildRuntimeProgram(runtime, { fileName: configPath, event: 'update' })
+
+    expect(runtime.getHost()).not.toBe(previousHost)
+    expect(runtime.getProgram().getSourceFile(normalizePath(initialPath))).toBeUndefined()
+    expect(runtime.getProgram().getSourceFile(normalizePath(extraPath))).toBeDefined()
+    expect(
+      (runtime as any).aliases.some((alias: any) =>
+        typeof alias.find === 'string' ? alias.find === '#/' : alias.find.test('#/extra'),
+      ),
+    ).toBe(true)
+  })
+
+  it('should reuse an updated external declaration and watch it', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    mkdirSync(resolve(tempDir, 'src'))
+    mkdirSync(resolve(tempDir, 'external'))
+    const sourcePath = resolve(tempDir, 'src/index.ts')
+    const declarationPath = resolve(tempDir, 'external/types.d.ts')
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { strict: true }, include: ['src/**/*'] }),
+    )
+    writeFileSync(
+      sourcePath,
+      "import type { External } from '../external/types'\nexport type Value = External\n",
+    )
+    writeFileSync(declarationPath, 'export interface External { value: string }\n')
+
+    const runtime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+    })
+    const initialProgram = runtime.getProgram()
+    const initialSource = initialProgram.getSourceFile(normalizePath(sourcePath))!
+    const initialDeclaration = initialProgram.getSourceFile(normalizePath(declarationPath))!
+    expect(getRuntimeWatchTargets(runtime).files).toContain(normalizePath(declarationPath))
+
+    writeFileSync(declarationPath, 'export interface External { value: number }\n')
+    rebuildRuntimeProgram(runtime, { fileName: declarationPath, event: 'update' })
+
+    expect(runtime.getProgram().getSourceFile(normalizePath(sourcePath))).toBe(initialSource)
+    expect(runtime.getProgram().getSourceFile(normalizePath(declarationPath))).not.toBe(
+      initialDeclaration,
+    )
+  })
+
+  it('should use fresh fallback for JSON and custom resolver updates', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    mkdirSync(resolve(tempDir, 'src'))
+    const sourcePath = resolve(tempDir, 'src/index.ts')
+    const jsonPath = resolve(tempDir, 'src/data.json')
+    const customPath = resolve(tempDir, 'src/schema.grammar')
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { moduleResolution: 'bundler', resolveJsonModule: true },
+        include: ['src/**/*'],
+      }),
+    )
+    writeFileSync(sourcePath, "import data from './data.json'\nexport { data }\n")
+    writeFileSync(jsonPath, '{"value":"before"}\n')
+    writeFileSync(customPath, 'before\n')
+
+    const runtime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      resolvers: [
+        {
+          name: 'grammar',
+          supports: id => id.endsWith('.grammar'),
+          transform: () => [],
+        },
+      ],
+    })
+    const createFreshRuntime = () =>
+      Runtime.toInstance({
+        processor: 'ts',
+        root: tempDir,
+        tsconfigPath: 'tsconfig.json',
+        resolvers: [
+          {
+            name: 'grammar',
+            supports: id => id.endsWith('.grammar'),
+            transform: () => [],
+          },
+        ],
+      })
+    let previousHost = runtime.getHost()
+    let previousSource = runtime.getProgram().getSourceFile(normalizePath(sourcePath))!
+
+    writeFileSync(jsonPath, '{"value":"after"}\n')
+    rebuildRuntimeProgram(runtime, { fileName: jsonPath, event: 'update' })
+    expect(runtime.getHost()).not.toBe(previousHost)
+    expect(runtime.getProgram().getSourceFile(normalizePath(sourcePath))).not.toBe(previousSource)
+    expect(runtime.getProgram().getSourceFile(normalizePath(jsonPath))?.text).toContain('after')
+    expect(emitDeclarations(runtime.getProgram())).toEqual(
+      emitDeclarations((await createFreshRuntime()).getProgram()),
+    )
+
+    previousHost = runtime.getHost()
+    previousSource = runtime.getProgram().getSourceFile(normalizePath(sourcePath))!
+    writeFileSync(customPath, 'after\n')
+    rebuildRuntimeProgram(runtime, { fileName: customPath, event: 'update' })
+    expect(runtime.getHost()).not.toBe(previousHost)
+    expect(runtime.getProgram().getSourceFile(normalizePath(sourcePath))).not.toBe(previousSource)
+    expect(emitDeclarations(runtime.getProgram())).toEqual(
+      emitDeclarations((await createFreshRuntime()).getProgram()),
+    )
+  })
+
+  it('should fall back to a fresh Program when the internal cache switch is disabled', async () => {
+    vi.stubEnv('DTS_DISABLE_SOURCE_FILE_CACHE', '1')
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    const sourcePath = resolve(tempDir, 'index.ts')
+    const unchangedPath = resolve(tempDir, 'unchanged.ts')
+    writeFileSync(resolve(tempDir, 'tsconfig.json'), JSON.stringify({ include: ['*.ts'] }))
+    writeFileSync(sourcePath, "export const value = 'before'\n")
+    writeFileSync(unchangedPath, 'export const unchanged = true\n')
+
+    const runtime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+    })
+    const previousHost = runtime.getHost()
+    const previousSourceFile = runtime.getProgram().getSourceFile(normalizePath(sourcePath))!
+    const previousUnchangedSourceFile = runtime
+      .getProgram()
+      .getSourceFile(normalizePath(unchangedPath))!
+    const previousDeclarations = emitDeclarations(runtime.getProgram())
+
+    writeFileSync(sourcePath, "export const value = 'after'\n")
+    rebuildRuntimeProgram(runtime, { fileName: sourcePath, event: 'update' })
+
+    expect(runtime.getProgram().getSourceFile(normalizePath(sourcePath))).not.toBe(
+      previousSourceFile,
+    )
+    expect(runtime.getHost()).toBe(previousHost)
+    expect(runtime.getProgram().getSourceFile(normalizePath(unchangedPath))).not.toBe(
+      previousUnchangedSourceFile,
+    )
+    const freshRuntime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+    })
+    const rebuiltDeclarations = emitDeclarations(runtime.getProgram())
+    expect(rebuiltDeclarations).toEqual(emitDeclarations(freshRuntime.getProgram()))
+    expect(rebuiltDeclarations).not.toEqual(previousDeclarations)
   })
 
   it('should use baseUrl when explicitly set', async () => {

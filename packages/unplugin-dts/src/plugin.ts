@@ -1,10 +1,11 @@
-import { basename, dirname } from 'node:path'
+import { basename, dirname, isAbsolute, relative } from 'node:path'
 import { readdirSync } from 'node:fs'
 
 import ts from './core/ts-loader.cjs'
+import globToRegExp from 'glob-to-regexp'
 import { cyan, green, yellow } from 'kolorist'
+import { BuildTimeTracker } from './core/performance'
 import {
-  Runtime,
   defaultIndex,
   dtsRE,
   ensureAbsolute,
@@ -18,20 +19,72 @@ import {
   tjsRE,
   unwrapPromise,
 } from './core'
+import {
+  Runtime,
+  getRuntimeWatchTargets,
+  isCanonicalPathEqualOrInside,
+  isRuntimeConfigFile,
+  isRuntimeWatchDirectory,
+  rebuildRuntimeProgram,
+  shouldHandleRuntimeWatchChange,
+} from './core/runtime'
 
 import type {
   RolldownPlugin,
   RollupPlugin,
   RspackCompiler,
+  UnpluginBuildContext,
   UnpluginFactory,
   WebpackCompiler,
 } from 'unplugin'
 import type { Alias } from './core'
 import type { PluginOptions } from './types'
 import type { Logger } from './core'
+import type { ProgramChange } from './core/runtime'
 
 const pluginName = 'unplugin:dts'
 const logPrefix = cyan(`[${pluginName}]`)
+
+type NativeWatchFileSystem = NonNullable<WebpackCompiler['watchFileSystem']>
+type NativeWatchParameters = Parameters<NativeWatchFileSystem['watch']>
+type NativeWatchIgnored = NativeWatchParameters[4]['ignored'] | ((fileName: string) => boolean)
+type NativeWatchOptions = Omit<NativeWatchParameters[4], 'ignored'> & {
+  ignored?: NativeWatchIgnored,
+}
+
+function nativeWatchGlobToSource(ignored: string) {
+  if (!ignored.length) return undefined
+  const source = globToRegExp(ignored, { globstar: true, extended: true }).source
+  return source.slice(0, -1) + '(?:$|\\/)'
+}
+
+function nativeWatchIgnoredToPredicate(ignored: NativeWatchIgnored) {
+  if (Array.isArray(ignored)) {
+    const sources = ignored.map(nativeWatchGlobToSource).filter(Boolean) as string[]
+    if (!sources.length) return () => false
+    const regexp = new RegExp(sources.join('|'))
+    return (fileName: string) => regexp.test(normalizePath(fileName))
+  }
+  if (typeof ignored === 'string') {
+    const source = nativeWatchGlobToSource(ignored)
+    if (!source) return () => false
+    const regexp = new RegExp(source)
+    return (fileName: string) => regexp.test(normalizePath(fileName))
+  }
+  if (ignored instanceof RegExp) {
+    return (fileName: string) => ignored.test(normalizePath(fileName))
+  }
+  if (typeof ignored === 'function') return ignored
+  return () => false
+}
+
+export function mergeNativeWatchIgnored(
+  ignored: NativeWatchIgnored,
+  isAdditionalIgnored: (fileName: string) => boolean,
+): NativeWatchIgnored {
+  const isIgnored = nativeWatchIgnoredToPredicate(ignored)
+  return (fileName: string) => isIgnored(fileName) || isAdditionalIgnored(fileName)
+}
 
 export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = /* #__PURE__ */ (
   options = {},
@@ -74,11 +127,211 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
 
   let isDev = false
   let bundled = false
-  let timeRecord = 0
+  const buildTime = new BuildTimeTracker()
+  let bundlerOutDirs: string[] = []
+  let nativeWatchIgnoredDirectories: string[] = []
+  const preparedWatchFileSystems = new WeakSet<object>()
 
   let entryPromise: Promise<any> | undefined
 
   let runtime: Runtime
+  const pendingProgramChanges = new Map<string, ProgramChange>()
+
+  function queueProgramChange(change: ProgramChange) {
+    const fileName = change.fileName && normalizePath(change.fileName)
+    const key = fileName
+      ? ts.sys.useCaseSensitiveFileNames
+        ? fileName
+        : fileName.toLowerCase()
+      : '__missing__'
+    const previous = pendingProgramChanges.get(key)
+    pendingProgramChanges.set(key, {
+      fileName,
+      event: change.event ?? previous?.event,
+      forceFresh: change.forceFresh || previous?.forceFresh,
+    })
+  }
+
+  function isInsideWatchIgnoredDirectory(fileName: string) {
+    fileName = ensureAbsolute(fileName, root)
+    const canonicalFileName = ts.sys.useCaseSensitiveFileNames
+      ? normalizePath(fileName)
+      : normalizePath(fileName).toLowerCase()
+
+    return nativeWatchIgnoredDirectories.some(directory => {
+      const canonicalDirectory = ts.sys.useCaseSensitiveFileNames
+        ? normalizePath(directory)
+        : normalizePath(directory).toLowerCase()
+      return (
+        canonicalFileName === canonicalDirectory ||
+        canonicalFileName.startsWith(`${canonicalDirectory}/`)
+      )
+    })
+  }
+
+  function isPathEqualOrInside(fileName: string, directory: string) {
+    const canonicalFileName = ts.sys.useCaseSensitiveFileNames
+      ? normalizePath(fileName)
+      : normalizePath(fileName).toLowerCase()
+    const canonicalDirectory = ts.sys.useCaseSensitiveFileNames
+      ? normalizePath(directory)
+      : normalizePath(directory).toLowerCase()
+    return isCanonicalPathEqualOrInside(canonicalFileName, canonicalDirectory)
+  }
+
+  function getRealPath(fileName: string) {
+    const unresolvedSegments: string[] = []
+    let existingPath = normalizePath(fileName)
+
+    while (!ts.sys.fileExists(existingPath) && !ts.sys.directoryExists(existingPath)) {
+      const parent = normalizePath(dirname(existingPath))
+      if (parent === existingPath) return undefined
+      unresolvedSegments.unshift(basename(existingPath))
+      existingPath = parent
+    }
+
+    try {
+      const realExistingPath = ts.sys.realpath?.(existingPath)
+      if (!realExistingPath) return undefined
+      return unresolvedSegments.length
+        ? resolve(realExistingPath, ...unresolvedSegments)
+        : realExistingPath
+    } catch {
+      return undefined
+    }
+  }
+
+  function getWatchPathAliases(directory: string) {
+    const normalizedDirectory = normalizePath(directory)
+    const aliases = new Set([normalizedDirectory])
+    const realDirectory = getRealPath(normalizedDirectory)
+    if (realDirectory) aliases.add(normalizePath(realDirectory))
+
+    if (isPathEqualOrInside(normalizedDirectory, root)) {
+      const realRoot = getRealPath(root)
+      if (realRoot) {
+        const relativeDirectory = normalizePath(relative(root, normalizedDirectory))
+        if (!isAbsolute(relativeDirectory) && !relativeDirectory.startsWith('../')) {
+          aliases.add(normalizePath(resolve(realRoot, relativeDirectory)))
+        }
+      }
+    }
+
+    return [...aliases]
+  }
+
+  function isAnyPathEqualOrInside(fileNames: readonly string[], directories: readonly string[]) {
+    return fileNames.some(fileName =>
+      directories.some(directory => isPathEqualOrInside(fileName, directory)),
+    )
+  }
+
+  function isInsideNativeWatchIgnoredDirectory(fileName: string) {
+    return nativeWatchIgnoredDirectories.some(directory => isPathEqualOrInside(fileName, directory))
+  }
+
+  function prepareNativeWatchFileSystem(compiler: WebpackCompiler | RspackCompiler) {
+    compiler.hooks.afterEnvironment.tap(pluginName, () => {
+      const watchFileSystem = compiler.watchFileSystem as NativeWatchFileSystem | null
+      if (!watchFileSystem || preparedWatchFileSystems.has(watchFileSystem)) return
+
+      preparedWatchFileSystems.add(watchFileSystem)
+      const watch = watchFileSystem.watch.bind(watchFileSystem)
+      watchFileSystem.watch = (...parameters: NativeWatchParameters) => {
+        const watchOptions = parameters[4] as NativeWatchOptions
+        parameters[4] = {
+          ...watchOptions,
+          ignored: nativeWatchIgnoredDirectories.length
+            ? mergeNativeWatchIgnored(watchOptions.ignored, isInsideNativeWatchIgnoredDirectory)
+            : watchOptions.ignored,
+        } as NativeWatchParameters[4]
+        return watch(...parameters)
+      }
+    })
+  }
+
+  function captureRollupOutputDirectories(options: unknown) {
+    const outputs = ensureArray(
+      (
+        options as {
+          output?: { dir?: string, file?: string } | { dir?: string, file?: string }[],
+        }
+      ).output,
+    ).filter((output): output is { dir?: string, file?: string } => !!output)
+    bundlerOutDirs = outputs.flatMap(output => {
+      if (output.dir) return [ensureAbsolute(output.dir, process.cwd())]
+      if (output.file) return [ensureAbsolute(dirname(output.file), process.cwd())]
+      return []
+    })
+  }
+
+  function addRuntimeWatchTargets(context: UnpluginBuildContext) {
+    if (meta.framework === 'esbuild') return
+
+    const targets = getRuntimeWatchTargets(runtime, bundlerOutDirs)
+    const outputDirectories = [
+      ...new Set([...targets.outputDirectories, ...bundlerOutDirs].map(normalizePath)),
+    ]
+    const fileAliases = targets.files.map(getWatchPathAliases)
+    const outputTargets = outputDirectories.map(directory => {
+      const aliases = getWatchPathAliases(directory)
+      return {
+        directory,
+        aliases,
+        canIgnore: fileAliases.every(
+          sourceAliases => !isAnyPathEqualOrInside(sourceAliases, aliases),
+        ),
+      }
+    })
+    const ignoredOutputDirectories = outputTargets.filter(target => target.canIgnore)
+    nativeWatchIgnoredDirectories = [
+      ...new Set(ignoredOutputDirectories.flatMap(target => target.aliases)),
+    ]
+    for (const file of targets.files) {
+      context.addWatchFile(file)
+    }
+
+    function canWatchDirectory(directory: string, canIgnoreNestedOutputs: boolean) {
+      const directoryAliases = getWatchPathAliases(directory)
+      return outputTargets.every(outputTarget => {
+        if (isAnyPathEqualOrInside(directoryAliases, outputTarget.aliases)) return false
+        if (!isAnyPathEqualOrInside(outputTarget.aliases, directoryAliases)) return true
+        return canIgnoreNestedOutputs && outputTarget.canIgnore
+      })
+    }
+
+    const nativeContext = context.getNativeBuildContext?.()
+    if (nativeContext?.framework === 'webpack' || nativeContext?.framework === 'rspack') {
+      const compilation = nativeContext.compilation
+      if (compilation) {
+        const contextDirectories = targets.directories.filter(directory =>
+          canWatchDirectory(directory, true),
+        )
+        for (const directory of contextDirectories) {
+          compilation.contextDependencies.add(directory)
+        }
+      }
+      return
+    }
+
+    const directories =
+      meta.framework === 'rollup' || meta.framework === 'rolldown'
+        ? targets.contextDirectories.filter(directory => canWatchDirectory(directory, false))
+        : targets.directories.filter(directory => canWatchDirectory(directory, true))
+    for (const directory of directories) {
+      context.addWatchFile(directory)
+    }
+  }
+
+  function flushPendingProgramChanges() {
+    if (!pendingProgramChanges.size) return
+
+    const changedSourceFiles = rebuildRuntimeProgram(runtime, [...pendingProgramChanges.values()])
+    for (const sourceFile of changedSourceFiles) {
+      runtime.addRootFile(sourceFile)
+    }
+    pendingProgramChanges.clear()
+  }
 
   function hasVueFilesInDir(dir: string): boolean {
     try {
@@ -160,12 +413,16 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
     if (!options.outDirs && compiler.options.output.path) {
       outDirs = [ensureAbsolute(compiler.options.output.path, root)]
     }
+    bundlerOutDirs = compiler.options.output.path
+      ? [ensureAbsolute(compiler.options.output.path, root)]
+      : []
 
     handleDebug('parse webpack(rspack) config')
   }
 
   const rollupHooks: Partial<RollupPlugin> = {
     options(options) {
+      captureRollupOutputDirectories(options)
       const input = typeof options.input === 'string' ? [options.input] : options.input
 
       if (Array.isArray(input)) {
@@ -201,11 +458,22 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
     name: 'unplugin-dts',
     enforce: 'pre',
     async buildStart() {
-      if (isDev || runtime) return
+      if (isDev) return
+
+      if (runtime) {
+        const interval = buildTime.begin('buildStart')
+        try {
+          flushPendingProgramChanges()
+          addRuntimeWatchTargets(this)
+        } finally {
+          buildTime.end(interval)
+        }
+        return
+      }
 
       handleDebug('begin buildStart')
-      timeRecord = 0
-      const startTime = Date.now()
+      buildTime.reset()
+      const interval = buildTime.begin('buildStart')
 
       if (entryPromise) {
         await entryPromise
@@ -303,18 +571,14 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
         )
       }
 
-      if (meta.framework !== 'esbuild') {
-        for (const file of runtime.getRootFiles()) {
-          this.addWatchFile(file)
-        }
-      }
+      addRuntimeWatchTargets(this)
 
       if (typeof afterBootstrap === 'function') {
         await unwrapPromise(afterBootstrap(runtime))
       }
 
       handleDebug('create ts program')
-      timeRecord += Date.now() - startTime
+      buildTime.end(interval)
     },
     async transform(code, id) {
       id = normalizePath(id).split('?')[0]
@@ -323,45 +587,48 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
 
       if (!runtime.matchResolver(id) && !tjsRE.test(id)) return
 
-      const startTime = Date.now()
-
-      await runtime.transform(id, code)
-
-      timeRecord += Date.now() - startTime
+      await buildTime.track('transform', () => runtime.transform(id, code))
     },
-    watchChange(id) {
-      id = normalizePath(id)
+    watchChange(id, change) {
+      id = normalizePath(id).split('?')[0]
 
-      if (isDev || !runtime || !runtime.filter(id)) {
+      const isWatchDirectory = runtime && isRuntimeWatchDirectory(runtime, id)
+      if (
+        isDev ||
+        !runtime ||
+        (!isWatchDirectory && !shouldHandleRuntimeWatchChange(runtime, id))
+      ) {
         return
       }
 
-      id = id.split('?')[0]
+      if (bundled) buildTime.reset()
+      const interval = buildTime.begin('watchChange')
 
-      if (!runtime.matchResolver(id) && !tjsRE.test(id)) {
+      if (
+        !isWatchDirectory &&
+        !isRuntimeConfigFile(runtime, id) &&
+        !runtime.matchResolver(id) &&
+        !tjsRE.test(id)
+      ) {
         // Non-type files (e.g. CSS) changed: no need to rebuild program,
         // but need to restore rootFiles and allow writeBundle to re-emit
         // declarations. This is important in watch mode because the bundler
         // may empty outDir during rebuild, deleting previously emitted .d.ts.
         runtime.restoreRootFiles()
         bundled = false
-        timeRecord = 0
+        buildTime.end(interval)
         return
       }
 
-      const sourceFile = runtime.getHost().getSourceFile(id, ts.ScriptTarget.ESNext)
+      runtime.restoreRootFiles()
+      bundled = false
+      queueProgramChange({
+        fileName: id,
+        event: change?.event,
+        forceFresh: isWatchDirectory,
+      })
 
-      if (sourceFile) {
-        runtime.restoreRootFiles()
-        runtime.addRootFile(normalizePath(sourceFile.fileName))
-
-        bundled = false
-        timeRecord = 0
-        // We lose the fast way to trigger source file re-emit in Volar 1,
-        // so now we have to rebuild the program to get the latest declaration
-        // files of those changed files.
-        runtime.rebuildProgram()
-      }
+      buildTime.end(interval)
     },
     async writeBundle() {
       if (isDev || !runtime || bundled) {
@@ -374,7 +641,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
       handleDebug('begin writeBundle')
       logger.info(green(`\n${logPrefix} Start generate declaration files...`))
 
-      const startTime = Date.now()
+      const interval = buildTime.begin('writeBundle')
 
       if (typeof afterDiagnostic === 'function') {
         await unwrapPromise(afterDiagnostic(runtime.getDiagnostics()))
@@ -398,14 +665,32 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
       }
 
       handleDebug('finish')
+      buildTime.end(interval)
+      const timing = buildTime.summarize()
+      handleDebug('timing summary %O', timing)
       logger.info(
-        green(`${logPrefix} Declaration files built in ${timeRecord + Date.now() - startTime}ms.\n`),
+        green(`${logPrefix} Declaration files built in ${Math.round(timing.attributedMs)}ms.\n`),
       )
     },
     vite: {
       apply: 'build',
       config(config) {
         const aliasOptions = config?.resolve?.alias ?? []
+
+        const watchOptions = config.build?.watch
+        if (watchOptions) {
+          const chokidarOptions = watchOptions.chokidar ?? {}
+          config.build!.watch = {
+            ...watchOptions,
+            chokidar: {
+              ...chokidarOptions,
+              ignored: [
+                ...ensureArray(chokidarOptions.ignored),
+                (fileName: string) => isInsideWatchIgnoredDirectory(fileName),
+              ],
+            },
+          }
+        }
 
         if (isNativeObj(aliasOptions)) {
           aliases = Object.entries(aliasOptions).map(([key, value]) => {
@@ -419,6 +704,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
       async configResolved(config) {
         logger = config.logger
         root = ensureAbsolute(options.root ?? '', config.root)
+        bundlerOutDirs = [ensureAbsolute(config.build.outDir, root)]
 
         if (config.build.lib) {
           const input =
@@ -481,6 +767,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
     },
     webpack(compiler) {
       prepareFromCompiler(compiler)
+      prepareNativeWatchFileSystem(compiler)
 
       compiler.hooks.emit.tap('UnpluginDtsRemoveAssets', compilation => {
         if (declarationOnly) {
@@ -490,6 +777,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
     },
     rspack(compiler) {
       prepareFromCompiler(compiler)
+      prepareNativeWatchFileSystem(compiler)
 
       compiler.hooks.thisCompilation.tap('UnpluginDtsRemoveAssets', compilation => {
         compilation.hooks.processAssets.tap(

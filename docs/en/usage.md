@@ -192,6 +192,75 @@ await build({
 })
 ```
 
+## Watch Mode
+
+Keep source directories separate from bundler and declaration output directories. This is the
+recommended layout for watch mode because a bundler can observe source-tree additions, deletions,
+and renames without also watching generated files:
+
+```text
+project/
+├── src/
+│   └── index.ts
+├── dist/
+└── types/
+```
+
+Vite, Webpack, and Rspack can discover newly added files that match your TypeScript configuration
+when the recursive source watch does not resolve into generated output. If an output directory is
+the source directory, or a realpath/symlink makes it overlap existing sources, the plugin fails
+closed: exact existing source files remain watched, but an unreferenced file addition may require a
+watcher restart. This prevents generated files from creating a rebuild loop.
+
+When Webpack or Rspack starts from a clean project and creates nested output directories, Watchpack
+may perform one initial compensating rebuild. Generated output is ignored after that bootstrap, so
+steady-state source additions, deletions, and renames do not form an output feedback loop.
+
+After a source is deleted or renamed, the plugin removes declaration paths that it wrote during the
+previous build but that are absent from the current complete output snapshot. Other files in the
+output directory are left unchanged.
+
+Pure Rollup watch cannot safely register a watched source directory that also contains its outputs
+without help from the calling configuration. In that layout, an unreferenced new file may not
+trigger a rebuild. Prefer moving sources into `src/`. If changing the layout is not possible,
+configure all generated output directories as ignored before calling `rollup.watch` and explicitly
+watch the type source directory:
+
+```js
+import { resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { defineConfig } from 'rollup'
+import typescript from '@rollup/plugin-typescript'
+import dts from 'unplugin-dts/rollup'
+
+const projectRoot = resolve(fileURLToPath(import.meta.url), '..')
+const outputDir = resolve(projectRoot, 'dist')
+
+const watchTypeRoot = {
+  name: 'watch-type-root',
+  buildStart() {
+    if (this.meta.watchMode) this.addWatchFile(projectRoot)
+  },
+}
+
+export default defineConfig({
+  input: resolve(projectRoot, 'index.ts'),
+  output: { dir: outputDir, format: 'es' },
+  watch: {
+    chokidar: {
+      ignored: path => path === outputDir || path.startsWith(`${outputDir}${sep}`),
+    },
+  },
+  plugins: [watchTypeRoot, typescript(), dts({ root: projectRoot })],
+})
+```
+
+If declarations use a different directory, or you have multiple outputs, include every generated
+directory in the ignored predicate. Rolldown currently does not discover unreferenced files created
+after watch starts through a directory `addWatchFile`. Import or reference the new file from an
+existing watched module, or restart the watcher after adding, deleting, or renaming such files.
+
 ## Bundling Types
 
 By default, the generated declaration files follow the source structure.

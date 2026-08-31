@@ -47,7 +47,7 @@ import {
 } from './utils'
 
 import type { Alias } from './types'
-import type { ProgramProcessor } from './processor'
+import type { ProgramProcessor, SourceFileCacheStats, VersionedCompilerHost } from './processor'
 import type { Resolver } from './resolvers'
 import type {
   AliasOptions,
@@ -69,6 +69,89 @@ const fixedCompilerOptions: ts.CompilerOptions = {
   preserveSymlinks: false,
   noEmitOnError: undefined,
   target: ts.ScriptTarget.ESNext,
+}
+
+export interface ProgramChange {
+  fileName?: string,
+  event?: 'create' | 'update' | 'delete',
+  forceFresh?: boolean,
+}
+
+export interface RuntimeWatchTargets {
+  files: string[],
+  directories: string[],
+  contextDirectories: string[],
+  outputDirectories: string[],
+}
+
+export function isCanonicalPathEqualOrInside(
+  canonicalFileName: string,
+  canonicalDirectory: string,
+) {
+  const directoryPrefix = canonicalDirectory.endsWith('/')
+    ? canonicalDirectory
+    : `${canonicalDirectory}/`
+  return canonicalFileName === canonicalDirectory || canonicalFileName.startsWith(directoryPrefix)
+}
+
+interface ProgramReuseStats {
+  mode: 'fresh' | 'incremental',
+  reason: string,
+  sourceFiles: number,
+  reusedSourceFiles: number,
+  nonDefaultSourceFiles: number,
+  reusedNonDefaultSourceFiles: number,
+  cacheHits: number,
+  cacheMisses: number,
+  cacheInvalidations: number,
+  cacheEntries: number,
+}
+
+function isVersionedCompilerHost(host: ts.CompilerHost): host is VersionedCompilerHost {
+  const candidate = host as Partial<VersionedCompilerHost>
+  return (
+    typeof candidate.invalidateSourceFile === 'function' &&
+    typeof candidate.getSourceFileCacheStats === 'function'
+  )
+}
+
+function getDiagnostics(program: ts.Program) {
+  return [
+    ...program.getDeclarationDiagnostics(),
+    ...program.getSemanticDiagnostics(),
+    ...program.getSyntacticDiagnostics(),
+  ]
+}
+
+interface RuntimeInternals {
+  runtimeOptions: CreateRuntimeOptions,
+  programProcessor: ProgramProcessor,
+  projectReferences: readonly ts.ProjectReference[] | undefined,
+  configWatchDirectories: string[],
+  emittedFilePaths: Set<string>,
+  cleanStaleOutputs: boolean,
+  lastProgramReuse: ProgramReuseStats,
+  rebuildProgramIncremental: (changes: readonly ProgramChange[]) => string[],
+  isConfigFile: (fileName: string) => boolean,
+  shouldHandleWatchChange: (fileName: string) => boolean,
+  getWatchTargets: () => RuntimeWatchTargets,
+  filterWatchDirectories: (
+    directories: readonly string[],
+    outputDirectories: readonly string[]
+  ) => string[],
+  isWatchDirectory: (fileName: string) => boolean,
+}
+
+const runtimeInternals = new WeakMap<Runtime, RuntimeInternals>()
+
+function getRuntimeInternals(runtime: Runtime) {
+  const internals = runtimeInternals.get(runtime)
+  if (!internals) throw new Error('Runtime is not initialized')
+  return internals
+}
+
+function shouldMeasureProgramReuse() {
+  return handleDebug.enabled
 }
 
 function isEmptyDeclarationEntry(content: string | undefined) {
@@ -144,19 +227,20 @@ export class Runtime {
   protected libName: string
   protected indexName: string
   protected logger: Logger
-
   protected resolvers: Resolver[]
   protected rootFiles: Set<string>
   protected outputFiles: Map<string, string>
   protected transformedFiles: Set<string>
 
+  private programSourceFilesByCanonicalName: Map<string, ts.SourceFile> | undefined
+  private watchDirectoryNames: Set<string> | undefined
+  private watchTargets: RuntimeWatchTargets | undefined
+
   readonly filter: (id: string) => boolean
   readonly rebuildProgram: () => void
 
-  protected constructor(
-    options: CreateRuntimeOptions,
-    { createParsedCommandLine, createProgram }: ProgramProcessor,
-  ) {
+  protected constructor(options: CreateRuntimeOptions, programProcessor: ProgramProcessor) {
+    const { createCompilerHost, createParsedCommandLine, createProgram } = programProcessor
     const {
       root,
       tsconfigPath,
@@ -274,15 +358,16 @@ export class Runtime {
       ),
     ]
 
-    const host = ts.createCompilerHost(compilerOptions)
-    const rebuildProgram = () =>
-      createProgram({
-        host,
-        rootNames,
-        options: compilerOptions,
-        projectReferences: content?.projectReferences,
-      })
-    const program = rebuildProgram()
+    const host =
+      createCompilerHost && process.env.DTS_DISABLE_SOURCE_FILE_CACHE !== '1'
+        ? createCompilerHost(compilerOptions)
+        : ts.createCompilerHost(compilerOptions)
+    const program = createProgram({
+      host,
+      rootNames,
+      options: compilerOptions,
+      projectReferences: content?.projectReferences,
+    })
 
     const libName = toCapitalCase(options.libName || '_default')
     const indexName = options.indexName || defaultIndex
@@ -321,11 +406,7 @@ export class Runtime {
       options.entryRoot || (useTs6ImplicitRootDir ? sourcePublicPath || publicRoot : publicRoot)
     entryRoot = ensureAbsolute(entryRoot, root)
 
-    const diagnostics = [
-      ...program.getDeclarationDiagnostics(),
-      ...program.getSemanticDiagnostics(),
-      ...program.getSyntacticDiagnostics(),
-    ]
+    const diagnostics = getDiagnostics(program)
 
     if (diagnostics?.length) {
       logger.error(ts.formatDiagnosticsWithColorAndContext(diagnostics, host))
@@ -362,9 +443,252 @@ export class Runtime {
     this.filter = filter
 
     this.program = program
-    this.rebuildProgram = () => {
-      this.program = rebuildProgram()
+    const cacheStats = this.getSourceFileCacheStats()
+    const measureInitialReuse = shouldMeasureProgramReuse()
+    const lastProgramReuse: ProgramReuseStats = {
+      mode: 'fresh',
+      reason: 'initial',
+      sourceFiles: measureInitialReuse ? program.getSourceFiles().length : 0,
+      reusedSourceFiles: 0,
+      nonDefaultSourceFiles: measureInitialReuse
+        ? program
+          .getSourceFiles()
+          .filter(sourceFile => !program.isSourceFileDefaultLibrary(sourceFile)).length
+        : 0,
+      reusedNonDefaultSourceFiles: 0,
+      cacheHits: cacheStats.hits,
+      cacheMisses: cacheStats.misses,
+      cacheInvalidations: cacheStats.invalidations,
+      cacheEntries: cacheStats.entries,
     }
+    this.rebuildProgram = () => {
+      const internals = getRuntimeInternals(this)
+      const { createCompilerHost, createProgram } = internals.programProcessor
+
+      if (createCompilerHost) {
+        this.host =
+          process.env.DTS_DISABLE_SOURCE_FILE_CACHE === '1'
+            ? ts.createCompilerHost(this.compilerOptions)
+            : createCompilerHost(this.compilerOptions)
+      }
+
+      this.program = createProgram({
+        host: this.host,
+        rootNames: this.rootNames,
+        options: this.compilerOptions,
+        projectReferences: internals.projectReferences,
+      })
+      this.programSourceFilesByCanonicalName = undefined
+      this.watchDirectoryNames = undefined
+      this.watchTargets = undefined
+    }
+    runtimeInternals.set(this, {
+      runtimeOptions: options,
+      programProcessor,
+      projectReferences: content?.projectReferences,
+      configWatchDirectories: Object.keys(content?.wildcardDirectories ?? {}).map(normalizePath),
+      emittedFilePaths: new Set(),
+      cleanStaleOutputs: false,
+      lastProgramReuse,
+      rebuildProgramIncremental: changes => this.rebuildProgramIncremental(changes),
+      isConfigFile: fileName => this.isConfigFile(fileName),
+      shouldHandleWatchChange: fileName => this.shouldHandleWatchChange(fileName),
+      getWatchTargets: () => this.getWatchTargets(),
+      filterWatchDirectories: (directories, outputDirectories) =>
+        this.filterWatchDirectories(directories, outputDirectories),
+      isWatchDirectory: fileName => this.isWatchDirectory(fileName),
+    })
+  }
+
+  private getSourceFileCacheStats(): SourceFileCacheStats {
+    return isVersionedCompilerHost(this.host)
+      ? this.host.getSourceFileCacheStats()
+      : { entries: 0, hits: 0, misses: 0, invalidations: 0 }
+  }
+
+  private getCanonicalFileName(fileName: string) {
+    return normalizePath(
+      this.host.getCanonicalFileName(ensureAbsolute(fileName, this.host.getCurrentDirectory())),
+    )
+  }
+
+  private measureProgramReuse(
+    previousProgram: ts.Program,
+    mode: ProgramReuseStats['mode'],
+    reason: string,
+    previousCacheStats: SourceFileCacheStats,
+  ) {
+    const currentCacheStats = this.getSourceFileCacheStats()
+    const cacheStats = {
+      cacheHits: currentCacheStats.hits - previousCacheStats.hits,
+      cacheMisses: currentCacheStats.misses - previousCacheStats.misses,
+      cacheInvalidations: currentCacheStats.invalidations - previousCacheStats.invalidations,
+      cacheEntries: currentCacheStats.entries,
+    }
+
+    if (!shouldMeasureProgramReuse()) {
+      getRuntimeInternals(this).lastProgramReuse = {
+        mode,
+        reason,
+        sourceFiles: 0,
+        reusedSourceFiles: 0,
+        nonDefaultSourceFiles: 0,
+        reusedNonDefaultSourceFiles: 0,
+        ...cacheStats,
+      }
+      return
+    }
+
+    const previousSourceFiles = new Map(
+      previousProgram
+        .getSourceFiles()
+        .map(sourceFile => [this.getCanonicalFileName(sourceFile.fileName), sourceFile] as const),
+    )
+    const sourceFiles = this.program.getSourceFiles()
+    const reusedSourceFiles = sourceFiles.filter(
+      sourceFile =>
+        previousSourceFiles.get(this.getCanonicalFileName(sourceFile.fileName)) === sourceFile,
+    )
+    const nonDefaultSourceFiles = sourceFiles.filter(
+      sourceFile => !this.program.isSourceFileDefaultLibrary(sourceFile),
+    )
+    const reused = new Set(reusedSourceFiles)
+
+    getRuntimeInternals(this).lastProgramReuse = {
+      mode,
+      reason,
+      sourceFiles: sourceFiles.length,
+      reusedSourceFiles: reusedSourceFiles.length,
+      nonDefaultSourceFiles: nonDefaultSourceFiles.length,
+      reusedNonDefaultSourceFiles: nonDefaultSourceFiles.filter(sourceFile =>
+        reused.has(sourceFile),
+      ).length,
+      ...cacheStats,
+    }
+    handleDebug('program rebuild %O', getRuntimeInternals(this).lastProgramReuse)
+  }
+
+  private refreshDiagnostics() {
+    this.diagnostics = getDiagnostics(this.program)
+
+    if (this.diagnostics.length) {
+      this.logger.error(ts.formatDiagnosticsWithColorAndContext(this.diagnostics, this.host))
+    }
+  }
+
+  private rebuildFresh(previousProgram: ts.Program, reason: string) {
+    const internals = getRuntimeInternals(this)
+    if (
+      reason === 'create' ||
+      reason === 'delete' ||
+      reason === 'config' ||
+      reason === 'forced' ||
+      reason === 'untracked-file' ||
+      reason === 'missing-file'
+    ) {
+      internals.cleanStaleOutputs = true
+    }
+    const rebuildProgram = this.rebuildProgram
+    const fresh = new Runtime(internals.runtimeOptions, internals.programProcessor)
+    const freshInternals = getRuntimeInternals(fresh)
+    Object.assign(this, fresh)
+    Object.defineProperty(this, 'rebuildProgram', {
+      value: rebuildProgram,
+      configurable: true,
+      enumerable: true,
+      writable: true,
+    })
+    internals.projectReferences = freshInternals.projectReferences
+    internals.configWatchDirectories = freshInternals.configWatchDirectories
+    this.measureProgramReuse(previousProgram, 'fresh', reason, {
+      entries: 0,
+      hits: 0,
+      misses: 0,
+      invalidations: 0,
+    })
+  }
+
+  private rebuildProgramWithCurrentHost(previousProgram: ts.Program, reason: string) {
+    const internals = getRuntimeInternals(this)
+    this.program = internals.programProcessor.createProgram({
+      host: this.host,
+      rootNames: this.rootNames,
+      options: this.compilerOptions,
+      projectReferences: internals.projectReferences,
+    })
+    this.programSourceFilesByCanonicalName = undefined
+    this.watchDirectoryNames = undefined
+    this.watchTargets = undefined
+    this.refreshDiagnostics()
+    this.measureProgramReuse(previousProgram, 'fresh', reason, {
+      entries: 0,
+      hits: 0,
+      misses: 0,
+      invalidations: 0,
+    })
+  }
+
+  private rebuildProgramIncremental(changes: readonly ProgramChange[]) {
+    const previousProgram = this.program
+    const host = this.host
+    const programSourceFiles = new Map<string, ts.SourceFile>()
+    let fallbackReason = ''
+
+    for (const change of changes) {
+      const fileName = change.fileName && normalizePath(change.fileName)
+      const event = change.event ?? 'update'
+      const programSourceFile = fileName ? this.getProgramSourceFile(fileName) : undefined
+
+      if (change.forceFresh) fallbackReason = 'forced'
+      else if (!fileName) fallbackReason = 'missing-file'
+      else if (event !== 'update') fallbackReason = event
+      else if (this.isConfigFile(fileName)) fallbackReason = 'config'
+      else if (this.matchResolver(fileName) || fileName.endsWith('.json')) {
+        fallbackReason = 'resolver'
+      } else if (!programSourceFile) fallbackReason = 'untracked-file'
+      else {
+        programSourceFiles.set(
+          this.getCanonicalFileName(programSourceFile.fileName),
+          programSourceFile,
+        )
+      }
+
+      if (fallbackReason) break
+    }
+
+    if (!isVersionedCompilerHost(host)) {
+      const reason = fallbackReason || 'cache-disabled'
+      if (!fallbackReason || fallbackReason === 'resolver') {
+        this.rebuildProgramWithCurrentHost(previousProgram, reason)
+      } else {
+        this.rebuildFresh(previousProgram, reason)
+      }
+      return this.getChangedProgramSourceFiles(changes)
+    }
+
+    if (fallbackReason) {
+      this.rebuildFresh(previousProgram, fallbackReason)
+      return this.getChangedProgramSourceFiles(changes)
+    }
+
+    const previousCacheStats = this.getSourceFileCacheStats()
+    for (const sourceFile of programSourceFiles.values()) {
+      host.invalidateSourceFile(sourceFile.fileName)
+    }
+    const internals = getRuntimeInternals(this)
+    this.program = internals.programProcessor.createProgram({
+      host,
+      rootNames: this.rootNames,
+      options: this.compilerOptions,
+      projectReferences: internals.projectReferences,
+      oldProgram: previousProgram,
+    })
+    this.programSourceFilesByCanonicalName = undefined
+    this.watchDirectoryNames = undefined
+    this.watchTargets = undefined
+    this.refreshDiagnostics()
+    this.measureProgramReuse(previousProgram, 'incremental', 'source-update', previousCacheStats)
+    return this.getChangedProgramSourceFiles(changes)
   }
 
   getHost() {
@@ -373,6 +697,115 @@ export class Runtime {
 
   getProgram() {
     return this.program
+  }
+
+  private getProgramSourceFile(fileName: string) {
+    if (!this.programSourceFilesByCanonicalName) {
+      this.programSourceFilesByCanonicalName = new Map(
+        this.program
+          .getSourceFiles()
+          .map(sourceFile => [this.getCanonicalFileName(sourceFile.fileName), sourceFile]),
+      )
+    }
+
+    return this.programSourceFilesByCanonicalName.get(this.getCanonicalFileName(fileName))
+  }
+
+  private getChangedProgramSourceFiles(changes: readonly ProgramChange[]) {
+    const sourceFiles = new Set<string>()
+    for (const change of changes) {
+      if (!change.fileName) continue
+      const sourceFile = this.getProgramSourceFile(change.fileName)
+      if (sourceFile) sourceFiles.add(normalizePath(sourceFile.fileName))
+    }
+    return [...sourceFiles]
+  }
+
+  private isConfigFile(fileName: string) {
+    return (
+      !!this.configPath &&
+      this.getCanonicalFileName(fileName) === this.getCanonicalFileName(this.configPath)
+    )
+  }
+
+  private shouldHandleWatchChange(fileName: string) {
+    return (
+      this.filter(fileName) ||
+      this.isConfigFile(fileName) ||
+      !!this.matchResolver(fileName) ||
+      !!this.getProgramSourceFile(fileName)
+    )
+  }
+
+  private getWatchTargets(): RuntimeWatchTargets {
+    if (this.watchTargets) return this.watchTargets
+
+    const files = new Set(this.getRootFiles())
+    const directories = new Set<string>()
+    const contextDirectories = new Set<string>()
+    for (const directory of getRuntimeInternals(this).configWatchDirectories) {
+      directories.add(directory)
+    }
+    if (this.configPath) files.add(normalizePath(this.configPath))
+
+    for (const sourceFile of this.program.getSourceFiles()) {
+      if (!this.program.isSourceFileDefaultLibrary(sourceFile)) {
+        files.add(normalizePath(sourceFile.fileName))
+
+        if (!this.program.isSourceFileFromExternalLibrary(sourceFile)) {
+          directories.add(normalizePath(dirname(sourceFile.fileName)))
+        }
+      }
+    }
+
+    for (const directory of directories) {
+      const isInsideOutDir = this.outDirs.some(outDir =>
+        this.isPathEqualOrInside(directory, outDir.dir),
+      )
+      const containsOutDir = this.outDirs.some(outDir =>
+        this.isPathEqualOrInside(outDir.dir, directory),
+      )
+
+      if (!isInsideOutDir) files.add(directory)
+      if (!isInsideOutDir && !containsOutDir) contextDirectories.add(directory)
+    }
+
+    this.watchTargets = {
+      files: [...files].filter(file => !directories.has(file)),
+      directories: [...files].filter(file => directories.has(file)),
+      contextDirectories: [...contextDirectories],
+      outputDirectories: this.outDirs.map(outDir => outDir.dir),
+    }
+    return this.watchTargets
+  }
+
+  private isPathEqualOrInside(fileName: string, directory: string) {
+    const canonicalFileName = this.getCanonicalFileName(fileName)
+    const canonicalDirectory = this.getCanonicalFileName(directory)
+    return isCanonicalPathEqualOrInside(canonicalFileName, canonicalDirectory)
+  }
+
+  private filterWatchDirectories(
+    directories: readonly string[],
+    outputDirectories: readonly string[],
+  ) {
+    return directories.filter(directory =>
+      outputDirectories.every(
+        outputDirectory =>
+          !this.isPathEqualOrInside(directory, outputDirectory) &&
+          !this.isPathEqualOrInside(outputDirectory, directory),
+      ),
+    )
+  }
+
+  private isWatchDirectory(fileName: string) {
+    if (!this.watchDirectoryNames) {
+      this.watchDirectoryNames = new Set(
+        this.getWatchTargets().directories.map(directory => this.getCanonicalFileName(directory)),
+      )
+    }
+
+    return this.watchDirectoryNames.has(this.getCanonicalFileName(fileName))
   }
 
   matchResolver(id: string) {
@@ -541,6 +974,7 @@ export class Runtime {
     const outDir = outDirs[0].dir
     const primaryOutDirConfig = outDirs[0]
     const emittedFiles = new Map<string, string>()
+    const currentEmittedFilePaths = new Set<string>()
     const declareModules: string[] = []
 
     const writeOutput = async (
@@ -586,6 +1020,7 @@ export class Runtime {
       await mkdir(dir, { recursive: true })
 
       await writeFile(path, content, 'utf-8')
+      currentEmittedFilePaths.add(path)
       record && emittedFiles.set(path, content)
     }
 
@@ -899,6 +1334,7 @@ export class Runtime {
           )
 
           await runParallel(maxConcurrency, unbundledFiles, f => unlink(f))
+          for (const file of unbundledFiles) currentEmittedFilePaths.delete(file)
           removeDirIfEmpty(outDir)
           emittedFiles.clear()
 
@@ -970,8 +1406,66 @@ export class Runtime {
       })
     }
 
+    const internals = getRuntimeInternals(this)
+    if (internals.cleanStaleOutputs) {
+      const staleFiles = [...internals.emittedFilePaths].filter(
+        fileName => !currentEmittedFilePaths.has(fileName),
+      )
+      await runParallel(maxConcurrency, staleFiles, async fileName => {
+        try {
+          await unlink(fileName)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
+      })
+      internals.emittedFilePaths = currentEmittedFilePaths
+      internals.cleanStaleOutputs = false
+    } else {
+      for (const fileName of currentEmittedFilePaths) {
+        internals.emittedFilePaths.add(fileName)
+      }
+    }
+
     this.clearTransformedFiles()
 
     return emittedFiles
   }
+}
+
+export function rebuildRuntimeProgram(
+  runtime: Runtime,
+  changes: ProgramChange | readonly ProgramChange[],
+) {
+  return getRuntimeInternals(runtime).rebuildProgramIncremental(
+    Array.isArray(changes) ? changes : [changes],
+  )
+}
+
+export function isRuntimeConfigFile(runtime: Runtime, fileName: string) {
+  return getRuntimeInternals(runtime).isConfigFile(fileName)
+}
+
+export function shouldHandleRuntimeWatchChange(runtime: Runtime, fileName: string) {
+  return getRuntimeInternals(runtime).shouldHandleWatchChange(fileName)
+}
+
+export function getRuntimeWatchTargets(
+  runtime: Runtime,
+  bundlerOutputDirectories: readonly string[] = [],
+) {
+  const internals = getRuntimeInternals(runtime)
+  const targets = internals.getWatchTargets()
+  return {
+    files: [...targets.files],
+    directories: [...targets.directories],
+    contextDirectories: internals.filterWatchDirectories(
+      targets.contextDirectories,
+      bundlerOutputDirectories,
+    ),
+    outputDirectories: [...targets.outputDirectories],
+  }
+}
+
+export function isRuntimeWatchDirectory(runtime: Runtime, fileName: string) {
+  return getRuntimeInternals(runtime).isWatchDirectory(fileName)
 }

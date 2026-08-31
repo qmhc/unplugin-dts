@@ -1,5 +1,17 @@
 import type ts from 'typescript'
 
+export interface SourceFileCacheStats {
+  entries: number,
+  hits: number,
+  misses: number,
+  invalidations: number,
+}
+
+export interface VersionedCompilerHost extends ts.CompilerHost {
+  invalidateSourceFile: (fileName: string) => void,
+  getSourceFileCacheStats: () => SourceFileCacheStats,
+}
+
 export interface ProgramProcessor {
   createParsedCommandLine: (
     _ts: typeof ts,
@@ -7,6 +19,7 @@ export interface ProgramProcessor {
     configPath: string
   ) => ts.ParsedCommandLine,
   createProgram: typeof ts.createProgram,
+  createCompilerHost?: (options: ts.CompilerOptions) => VersionedCompilerHost,
 }
 
 export async function loadProgramProcessor(type: 'vue' | 'ts' = 'ts'): Promise<ProgramProcessor> {
