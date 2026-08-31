@@ -1,6 +1,16 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { resolve } from 'node:path'
+import { dirname, resolve, win32 } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -9,6 +19,7 @@ import {
   isCanonicalPathEqualOrInside,
   rebuildRuntimeProgram,
 } from '../src/core/runtime'
+import { groupVueRootNames } from '../src/core/processor/vue'
 import { normalizePath } from '../src/core/utils'
 
 function emitDeclarations(program: ReturnType<Runtime['getProgram']>) {
@@ -30,6 +41,19 @@ describe('runtime tests', () => {
     if (tempDir) {
       rmSync(tempDir, { recursive: true, force: true })
     }
+  })
+
+  it('should group cross-volume Vue roots beside their own filesystem volume', () => {
+    expect(
+      groupVueRootNames(
+        ['C:\\project\\src\\App.vue', 'D:\\shared\\External.vue'],
+        'C:\\project',
+        win32,
+      ),
+    ).toEqual([
+      { directory: 'C:\\project', rootNames: ['C:\\project\\src\\App.vue'] },
+      { directory: 'D:\\', rootNames: ['D:\\shared\\External.vue'] },
+    ])
   })
 
   it('should compare descendants of filesystem roots without duplicating separators', () => {
@@ -154,6 +178,313 @@ describe('runtime tests', () => {
     })
 
     expect(ts6307).toHaveLength(0)
+  })
+
+  it('should keep Vue updates on a fresh Program boundary and refresh structural roots', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    const sourceDirectory = resolve(tempDir, 'src')
+    const appPath = resolve(sourceDirectory, 'App.vue')
+    const createdPath = resolve(sourceDirectory, 'Created.vue')
+    const renamedPath = resolve(sourceDirectory, 'Renamed.vue')
+    const typesDirectory = resolve(tempDir, 'types')
+    const secondaryTypesDirectory = resolve(tempDir, 'types-secondary')
+    const occupiedVueRootPath = resolve(tempDir, '__unplugin_dts_vue_root__.d.ts')
+    const virtualVueRootPath = resolve(tempDir, '__unplugin_dts_vue_root_1__.d.ts')
+    mkdirSync(sourceDirectory)
+    symlinkSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../../playground/vue-vite/node_modules'),
+      resolve(tempDir, 'node_modules'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+
+    const app = (
+      type: 'string' | 'number',
+      style: string,
+      docs: string,
+    ) => `<script setup lang="ts">
+defineProps<{ msg: ${type} }>()
+</script>
+<template><div class="${style}">{{ msg }}</div></template>
+<style scoped>.${style} { color: red; }</style>
+<docs lang="md">${docs}</docs>
+`
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          strict: true,
+          declarationMap: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+    writeFileSync(
+      resolve(sourceDirectory, 'index.ts'),
+      "export { default as App } from './App.vue'\n",
+    )
+    writeFileSync(appPath, app('string', 'first', 'docs-one'))
+    writeFileSync(occupiedVueRootPath, 'export interface UserOwnedVueRoot {}\n')
+
+    const runtime = await Runtime.toInstance({
+      processor: 'vue',
+      root: tempDir,
+      outDirs: [typesDirectory, secondaryTypesDirectory],
+      tsconfigPath: 'tsconfig.json',
+    })
+    const declarationFor = async (fileName: string) => {
+      runtime.restoreRootFiles()
+      runtime.clearTransformedFiles()
+      await runtime.emitOutput()
+      return readFileSync(resolve(typesDirectory, fileName), 'utf8')
+    }
+    const appSourceFile = runtime.getProgram().getSourceFile(normalizePath(appPath))!
+    const initialHost = runtime.getHost()
+    Object.assign(initialHost, { phase3HostMarker: true })
+
+    expect(runtime.getProgram().getCompilerOptions().moduleResolution).toBeDefined()
+    expect(runtime.getProgram().getRootFileNames()).toContain(normalizePath(virtualVueRootPath))
+    expect(existsSync(virtualVueRootPath)).toBe(false)
+    const watchTargets = getRuntimeWatchTargets(runtime)
+    expect(watchTargets.directories).toContain(normalizePath(sourceDirectory))
+    expect(watchTargets.directories).not.toContain(normalizePath(tempDir))
+    expect(watchTargets.files).not.toContain(normalizePath(virtualVueRootPath))
+    expect(await declarationFor('App.vue.d.ts')).toContain('msg: string')
+
+    writeFileSync(appPath, app('number', 'first', 'docs-one'))
+    rebuildRuntimeProgram(runtime, { fileName: appPath, event: 'update' })
+    expect(runtime.getHost()).toBe(initialHost)
+    expect(runtime.getHost()).toHaveProperty('phase3HostMarker', true)
+    expect(runtime.getProgram().getSourceFile(normalizePath(appPath))).not.toBe(appSourceFile)
+    const freshAfterUpdate = await Runtime.toInstance({
+      processor: 'vue',
+      root: tempDir,
+      outDirs: [typesDirectory, secondaryTypesDirectory],
+      tsconfigPath: 'tsconfig.json',
+    })
+    expect(emitDeclarations(runtime.getProgram())).toEqual(
+      emitDeclarations(freshAfterUpdate.getProgram()),
+    )
+    expect(await declarationFor('App.vue.d.ts')).toContain('msg: number')
+
+    writeFileSync(
+      createdPath,
+      '<script setup lang="ts">\ndefineProps<{ created: boolean }>()\n</script>\n',
+    )
+    rebuildRuntimeProgram(runtime, { fileName: createdPath, event: 'create' })
+    expect(runtime.getHost()).toBe(initialHost)
+    expect(runtime.getHost()).toHaveProperty('phase3HostMarker', true)
+    expect(runtime.getProgram().getSourceFile(normalizePath(createdPath))).toBeDefined()
+    expect(await declarationFor('Created.vue.d.ts')).toContain('created: boolean')
+    expect(existsSync(resolve(secondaryTypesDirectory, 'Created.vue.d.ts'))).toBe(true)
+    expect(existsSync(resolve(secondaryTypesDirectory, 'Created.vue.d.ts.map'))).toBe(true)
+
+    renameSync(createdPath, renamedPath)
+    rebuildRuntimeProgram(runtime, [
+      { fileName: createdPath, event: 'delete' },
+      { fileName: renamedPath, event: 'create' },
+    ])
+    expect(runtime.getHost()).toBe(initialHost)
+    expect(runtime.getHost()).toHaveProperty('phase3HostMarker', true)
+    expect(runtime.getProgram().getSourceFile(normalizePath(createdPath))).toBeUndefined()
+    expect(runtime.getProgram().getSourceFile(normalizePath(renamedPath))).toBeDefined()
+    expect(await declarationFor('Renamed.vue.d.ts')).toContain('created: boolean')
+    for (const directory of [typesDirectory, secondaryTypesDirectory]) {
+      expect(existsSync(resolve(directory, 'Created.vue.d.ts'))).toBe(false)
+      expect(existsSync(resolve(directory, 'Created.vue.d.ts.map'))).toBe(false)
+      expect(existsSync(resolve(directory, 'Renamed.vue.d.ts'))).toBe(true)
+      expect(existsSync(resolve(directory, 'Renamed.vue.d.ts.map'))).toBe(true)
+    }
+
+    rmSync(renamedPath)
+    rebuildRuntimeProgram(runtime, { fileName: renamedPath, event: 'delete' })
+    expect(runtime.getHost()).toBe(initialHost)
+    expect(runtime.getHost()).toHaveProperty('phase3HostMarker', true)
+    expect(runtime.getProgram().getSourceFile(normalizePath(renamedPath))).toBeUndefined()
+    runtime.restoreRootFiles()
+    await runtime.emitOutput()
+    for (const directory of [typesDirectory, secondaryTypesDirectory]) {
+      expect(existsSync(resolve(directory, 'Renamed.vue.d.ts'))).toBe(false)
+      expect(existsSync(resolve(directory, 'Renamed.vue.d.ts.map'))).toBe(false)
+    }
+  }, 10_000)
+
+  it('should never copy the internal Vue root when the config includes the project root', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    const sourceDirectory = resolve(tempDir, 'src')
+    const typesDirectory = resolve(tempDir, 'types')
+    const userRootName = '__unplugin_dts_vue_root__.d.ts'
+    const internalRootName = '__unplugin_dts_vue_root_1__.d.ts'
+    mkdirSync(sourceDirectory)
+    symlinkSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../../playground/vue-vite/node_modules'),
+      resolve(tempDir, 'node_modules'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { target: 'ESNext', module: 'ESNext' },
+        include: ['**/*'],
+      }),
+    )
+    writeFileSync(
+      resolve(sourceDirectory, 'App.vue'),
+      '<script setup lang="ts">\ndefineProps<{ msg: string }>()\n</script>\n',
+    )
+    writeFileSync(resolve(tempDir, userRootName), 'export interface UserOwnedRoot {}\n')
+
+    const runtime = await Runtime.toInstance({
+      processor: 'vue',
+      root: tempDir,
+      outDirs: typesDirectory,
+      tsconfigPath: 'tsconfig.json',
+    })
+    runtime.restoreRootFiles()
+    const emittedFiles = await runtime.emitOutput({ copyDtsFiles: true })
+
+    expect(readFileSync(resolve(typesDirectory, userRootName), 'utf8')).toContain('UserOwnedRoot')
+    expect(existsSync(resolve(typesDirectory, internalRootName))).toBe(false)
+    expect([...emittedFiles.keys()].some(fileName => fileName.endsWith(internalRootName))).toBe(
+      false,
+    )
+  })
+
+  it('should release Vue files that leave a stable import graph without a delete event', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    const sourceDirectory = resolve(tempDir, 'src')
+    const appPath = resolve(sourceDirectory, 'App.vue')
+    const firstPath = resolve(sourceDirectory, 'Comp1.vue')
+    const secondPath = resolve(sourceDirectory, 'Comp2.vue')
+    mkdirSync(sourceDirectory)
+    symlinkSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../../playground/vue-vite/node_modules'),
+      resolve(tempDir, 'node_modules'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          strict: true,
+        },
+        files: ['src/App.vue'],
+      }),
+    )
+    writeFileSync(firstPath, '<script lang="ts">\nexport interface First {}\n</script>\n')
+    writeFileSync(secondPath, '<script lang="ts">\nexport interface Second {}\n</script>\n')
+    writeFileSync(
+      appPath,
+      '<script setup lang="ts">\nimport type { First } from "./Comp1.vue"\ndefineProps<First>()\n</script>\n',
+    )
+
+    const runtime = await Runtime.toInstance({
+      processor: 'vue',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+    })
+    const initialHost = runtime.getHost()
+    expect(runtime.getProgram().getSourceFile(normalizePath(firstPath))).toBeDefined()
+    expect(runtime.getProgram().getSourceFile(normalizePath(secondPath))).toBeUndefined()
+
+    writeFileSync(
+      appPath,
+      '<script setup lang="ts">\nimport type { Second } from "./Comp2.vue"\ndefineProps<Second>()\n</script>\n',
+    )
+    rebuildRuntimeProgram(runtime, { fileName: appPath, event: 'update' })
+
+    expect(runtime.getHost()).toBe(initialHost)
+    expect(runtime.getProgram().getSourceFile(normalizePath(firstPath))).toBeUndefined()
+    expect(runtime.getProgram().getSourceFile(normalizePath(secondPath))).toBeDefined()
+    expect(runtime.getDiagnostics()).toEqual([])
+  })
+
+  it('should refresh Vue imports reached only from a TypeScript root', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    const sourceDirectory = resolve(tempDir, 'src')
+    const indexPath = resolve(sourceDirectory, 'index.ts')
+    const firstPath = resolve(sourceDirectory, 'Comp1.vue')
+    const secondPath = resolve(sourceDirectory, 'Comp2.vue')
+    mkdirSync(sourceDirectory)
+    symlinkSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../../playground/vue-vite/node_modules'),
+      resolve(tempDir, 'node_modules'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          strict: true,
+          declaration: true,
+        },
+        files: ['src/index.ts'],
+      }),
+    )
+    writeFileSync(
+      firstPath,
+      '<script lang="ts">\nexport interface Value { first: true }\n</script>\n',
+    )
+    writeFileSync(
+      secondPath,
+      '<script lang="ts">\nexport interface Value { second: true }\n</script>\n',
+    )
+    writeFileSync(
+      indexPath,
+      "import type { Value } from './Comp1.vue'\nexport type Current = Value\n",
+    )
+
+    const runtime = await Runtime.toInstance({
+      processor: 'vue',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+    })
+    const initialProgram = runtime.getProgram()
+    const initialHost = runtime.getHost()
+    expect(initialProgram.getSourceFile(normalizePath(firstPath))).toBeDefined()
+    expect(initialProgram.getSourceFile(normalizePath(secondPath))).toBeUndefined()
+    expect(initialProgram.getCompilerOptions().moduleResolution).toBeDefined()
+    expect(runtime.getDiagnostics()).toEqual([])
+
+    writeFileSync(
+      indexPath,
+      "import type { Value } from './Comp2.vue'\nexport type Current = Value\n",
+    )
+    rebuildRuntimeProgram(runtime, { fileName: indexPath, event: 'update' })
+
+    expect(runtime.getHost()).toBe(initialHost)
+    expect(runtime.getProgram()).not.toBe(initialProgram)
+    expect(initialProgram.getSourceFile(normalizePath(firstPath))).toBeDefined()
+    expect(runtime.getProgram().getSourceFile(normalizePath(firstPath))).toBeUndefined()
+    expect(runtime.getProgram().getSourceFile(normalizePath(secondPath))).toBeDefined()
+    expect(runtime.getDiagnostics()).toEqual([])
+
+    const incrementalDeclarations = emitDeclarations(runtime.getProgram())
+    const freshRuntime = await Runtime.toInstance({
+      processor: 'vue',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+    })
+    expect(incrementalDeclarations).toEqual(emitDeclarations(freshRuntime.getProgram()))
+    expect(
+      incrementalDeclarations.some(
+        ([fileName, content]) => fileName.endsWith('index.d.ts') && content.includes('Comp2.vue'),
+      ),
+    ).toBe(true)
+    expect(
+      incrementalDeclarations.some(
+        ([fileName, content]) =>
+          fileName.endsWith('Comp2.vue.d.ts') &&
+          content.includes('DefineComponent') &&
+          !content.includes('__VLS_export: any'),
+      ),
+    ).toBe(true)
   })
 
   it('should forward aliasesExclude to Runtime', async () => {

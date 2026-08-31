@@ -433,13 +433,18 @@ export function setModuleResolution(options: CompilerOptions) {
       moduleResolution = ts.ModuleResolutionKind.NodeNext
       break
     default:
-      moduleResolution = ts.version.startsWith('5')
-        ? ts.ModuleResolutionKind.Bundler
-        : ts.ModuleResolutionKind.Classic
+      moduleResolution = resolveESModuleResolution(ts.ModuleResolutionKind)
       break
   }
 
   options.moduleResolution = moduleResolution
+}
+
+export function resolveESModuleResolution(moduleResolutionKind: {
+  Classic: ts.ModuleResolutionKind,
+  Bundler?: ts.ModuleResolutionKind,
+}) {
+  return moduleResolutionKind.Bundler ?? moduleResolutionKind.Classic
 }
 
 export function editSourceMapDir(content: string, fromDir: string, toDir: string) {

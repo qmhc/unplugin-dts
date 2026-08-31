@@ -19,6 +19,7 @@ import {
   parseTsAliases,
   queryPublicPath,
   resolveConfigDir,
+  resolveESModuleResolution,
   setModuleResolution,
   toCapitalCase,
   transformDtsPath,
@@ -513,9 +514,14 @@ describe('setModuleResolution', () => {
   it('maps an ES2015+ target to ES2015 module resolution', () => {
     const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2020 }
     setModuleResolution(options)
-    const expected = ts.version.startsWith('5')
-      ? ts.ModuleResolutionKind.Bundler
-      : ts.ModuleResolutionKind.Classic
-    expect(options.moduleResolution).toBe(expected)
+    expect(options.moduleResolution).toBe(ts.ModuleResolutionKind.Bundler)
+  })
+
+  it('uses Classic when the TypeScript API does not expose Bundler', () => {
+    expect(
+      resolveESModuleResolution({
+        Classic: ts.ModuleResolutionKind.Classic,
+      }),
+    ).toBe(ts.ModuleResolutionKind.Classic)
   })
 })

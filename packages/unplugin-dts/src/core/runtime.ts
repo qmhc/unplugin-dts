@@ -274,10 +274,14 @@ export class Runtime {
     }
     const rawCompilerOptions = content?.raw.compilerOptions || {}
 
-    if (content?.fileNames.find(name => name.endsWith('.vue'))) {
+    if (
+      programProcessor.needsModuleResolutionFallback ||
+      content?.fileNames.find(name => name.endsWith('.vue'))
+    ) {
       // (#277) A patch for Vue
-      // If user don't specify `moduleResolution` in top config file,
-      // declaration of Vue files will be inferred to `any` type.
+      // If user doesn't specify `moduleResolution` in the top config file,
+      // declarations of Vue files can be inferred as `any`, including Vue files
+      // that are reached only through TypeScript roots.
       setModuleResolution(compilerOptions)
     }
 
@@ -578,6 +582,9 @@ export class Runtime {
 
   private rebuildFresh(previousProgram: ts.Program, reason: string) {
     const internals = getRuntimeInternals(this)
+    const previousHost = this.host
+    const previousLogger = this.logger
+    const preserveVueHost = !!internals.programProcessor.releaseSourceFile && reason !== 'config'
     if (
       reason === 'create' ||
       reason === 'delete' ||
@@ -589,7 +596,15 @@ export class Runtime {
       internals.cleanStaleOutputs = true
     }
     const rebuildProgram = this.rebuildProgram
-    const fresh = new Runtime(internals.runtimeOptions, internals.programProcessor)
+    const fresh = new Runtime(
+      preserveVueHost
+        ? {
+          ...internals.runtimeOptions,
+          logger: { info() {}, warn() {}, error() {} },
+        }
+        : internals.runtimeOptions,
+      internals.programProcessor,
+    )
     const freshInternals = getRuntimeInternals(fresh)
     Object.assign(this, fresh)
     Object.defineProperty(this, 'rebuildProgram', {
@@ -600,12 +615,43 @@ export class Runtime {
     })
     internals.projectReferences = freshInternals.projectReferences
     internals.configWatchDirectories = freshInternals.configWatchDirectories
+    if (preserveVueHost) {
+      this.host = previousHost
+      this.logger = previousLogger
+      this.program = internals.programProcessor.createProgram({
+        host: previousHost,
+        rootNames: this.rootNames,
+        options: this.compilerOptions,
+        projectReferences: internals.projectReferences,
+      })
+      this.programSourceFilesByCanonicalName = undefined
+      this.watchDirectoryNames = undefined
+      this.watchTargets = undefined
+      this.refreshDiagnostics()
+    }
+    this.releaseRemovedProgramSourceFiles(previousProgram)
     this.measureProgramReuse(previousProgram, 'fresh', reason, {
       entries: 0,
       hits: 0,
       misses: 0,
       invalidations: 0,
     })
+  }
+
+  private releaseRemovedProgramSourceFiles(previousProgram: ts.Program) {
+    const { releaseSourceFile } = getRuntimeInternals(this).programProcessor
+    if (!releaseSourceFile) return
+
+    const currentSourceFiles = new Set(
+      this.program
+        .getSourceFiles()
+        .map(sourceFile => this.getCanonicalFileName(sourceFile.fileName)),
+    )
+    for (const sourceFile of previousProgram.getSourceFiles()) {
+      if (!currentSourceFiles.has(this.getCanonicalFileName(sourceFile.fileName))) {
+        releaseSourceFile(previousProgram, sourceFile.fileName)
+      }
+    }
   }
 
   private rebuildProgramWithCurrentHost(previousProgram: ts.Program, reason: string) {
@@ -620,6 +666,7 @@ export class Runtime {
     this.watchDirectoryNames = undefined
     this.watchTargets = undefined
     this.refreshDiagnostics()
+    this.releaseRemovedProgramSourceFiles(previousProgram)
     this.measureProgramReuse(previousProgram, 'fresh', reason, {
       entries: 0,
       hits: 0,
@@ -748,7 +795,10 @@ export class Runtime {
     }
     if (this.configPath) files.add(normalizePath(this.configPath))
 
+    const { programProcessor } = getRuntimeInternals(this)
     for (const sourceFile of this.program.getSourceFiles()) {
+      if (programProcessor.isInternalSourceFile?.(sourceFile)) continue
+
       if (!this.program.isSourceFileDefaultLibrary(sourceFile)) {
         files.add(normalizePath(sourceFile.fileName))
 
@@ -1024,9 +1074,11 @@ export class Runtime {
       record && emittedFiles.set(path, content)
     }
 
+    const { programProcessor } = getRuntimeInternals(this)
     const sourceFiles = this.program.getSourceFiles()
 
     for (const sourceFile of sourceFiles) {
+      if (programProcessor.isInternalSourceFile?.(sourceFile)) continue
       if (!this.filter(sourceFile.fileName)) continue
 
       if ((copyDtsFiles || bundleTypes) && dtsRE.test(sourceFile.fileName)) {

@@ -20,6 +20,9 @@ export interface ProgramProcessor {
   ) => ts.ParsedCommandLine,
   createProgram: typeof ts.createProgram,
   createCompilerHost?: (options: ts.CompilerOptions) => VersionedCompilerHost,
+  needsModuleResolutionFallback?: boolean,
+  isInternalSourceFile?: (sourceFile: ts.SourceFile) => boolean,
+  releaseSourceFile?: (program: ts.Program, fileName: string) => void,
 }
 
 export async function loadProgramProcessor(type: 'vue' | 'ts' = 'ts'): Promise<ProgramProcessor> {
