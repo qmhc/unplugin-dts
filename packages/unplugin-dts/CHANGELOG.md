@@ -1,3 +1,28 @@
+# [1.1.0](https://github.com/qmhc/unplugin-dts/compare/v1.0.0-beta.7...v1.1.0) (2026-09-01)
+
+### Bug Fixes
+
+- avoid self-referencing synthetic entry when entry dts path equals types path ([f08ae3e](https://github.com/qmhc/unplugin-dts/commit/f08ae3ec690156be02fb55ca231fa014880e906b)), closes [#420](https://github.com/qmhc/unplugin-dts/issues/420)
+- include .vue files when resolving tsconfig include patterns ([d4e41d2](https://github.com/qmhc/unplugin-dts/commit/d4e41d26f825fe6ef6ca682bf36be2687992e20e)), closes [#469](https://github.com/qmhc/unplugin-dts/issues/469)
+- loop through all aliases so wildcard _ does not block @/_ resolution ([#477](https://github.com/qmhc/unplugin-dts/issues/477)) ([57b6278](https://github.com/qmhc/unplugin-dts/commit/57b6278f69d4fd057a2658ccaea6ff45166f8405))
+- **plugin:** re-emit declarations when non-type files change in watch mode ([a6bc975](https://github.com/qmhc/unplugin-dts/commit/a6bc975a106f73dd41edea49bf4208d5d1b9b623)), closes [#335](https://github.com/qmhc/unplugin-dts/issues/335)
+- relax vue language core peer range ([89b6634](https://github.com/qmhc/unplugin-dts/commit/89b663478cf484049c6edba01d5f182a67c6e8f6))
+- **rolldown:** correct exported type for Rolldown plugin ([6e0c0d2](https://github.com/qmhc/unplugin-dts/commit/6e0c0d2aec8d971a28530b649b0d822004f27bd8)), closes [#470](https://github.com/qmhc/unplugin-dts/issues/470)
+- **unplugin-dts:** add .js extension to synthetic entry imports for nodenext ([fff6ee3](https://github.com/qmhc/unplugin-dts/commit/fff6ee3ce4c6bf50cda5dcef4ef550256c1d69ca)), closes [#417](https://github.com/qmhc/unplugin-dts/issues/417)
+- **unplugin-dts:** avoid leaking optional peer types into declaration files ([e0eda08](https://github.com/qmhc/unplugin-dts/commit/e0eda08c3efe59e5fdc3b6bbf1b3c9da1a8a0ae6)), closes [#476](https://github.com/qmhc/unplugin-dts/issues/476)
+- **unplugin-dts:** correct module-resolution precedence in setModuleResolution ([#486](https://github.com/qmhc/unplugin-dts/issues/486)) ([8841cd8](https://github.com/qmhc/unplugin-dts/commit/8841cd8880d56524d0321c3de68bb157e4797db2))
+- **unplugin-dts:** fix getResolvedModule error when bundling dts files outside src ([89a12db](https://github.com/qmhc/unplugin-dts/commit/89a12dba6e23b220d598beca20356c54376f4f50)), closes [#401](https://github.com/qmhc/unplugin-dts/issues/401)
+- **unplugin-dts:** forward aliasesExclude to Runtime ([739db62](https://github.com/qmhc/unplugin-dts/commit/739db6209ff21d7b3d6ca0c5b394b474ce85c641)), closes [#472](https://github.com/qmhc/unplugin-dts/issues/472)
+- **unplugin-dts:** preserve empty bundled entries ([5204271](https://github.com/qmhc/unplugin-dts/commit/52042714fea070f2dbfc4f238a4bd637b78021aa)), closes [#483](https://github.com/qmhc/unplugin-dts/issues/483)
+- **unplugin-dts:** preserve typeof in static imports ([5b146c7](https://github.com/qmhc/unplugin-dts/commit/5b146c714d32188f8a71b4c4d8015e47634cc49b)), closes [#485](https://github.com/qmhc/unplugin-dts/issues/485)
+- **unplugin-dts:** separate publicRoot/entryRoot for TS 6.0 ([#479](https://github.com/qmhc/unplugin-dts/issues/479)) ([351500a](https://github.com/qmhc/unplugin-dts/commit/351500a4cc8e45c4691aabd04ebfa40654267060)), closes [#467](https://github.com/qmhc/unplugin-dts/issues/467) [#467](https://github.com/qmhc/unplugin-dts/issues/467)
+- **unplugin-dts:** stabilize Vue program lifecycle ([#488](https://github.com/qmhc/unplugin-dts/issues/488)) ([254ea3d](https://github.com/qmhc/unplugin-dts/commit/254ea3d77ebbecdc4aa16d4af8e16590967e35a6))
+
+### Performance Improvements
+
+- **unplugin-dts:** optimize watch rebuilds ([#487](https://github.com/qmhc/unplugin-dts/issues/487)) ([349e1b4](https://github.com/qmhc/unplugin-dts/commit/349e1b4512e2bf7add464fd5a59db31bc813a832))
+- **unplugin-dts:** reduce build overhead ([03782b7](https://github.com/qmhc/unplugin-dts/commit/03782b7fa5c6f4430d67a42e3b2b5e8af2d354a6))
+
 ## [1.0.3](https://github.com/qmhc/unplugin-dts/compare/v1.0.0-beta.7...v1.0.3) (2026-06-24)
 
 ### Bug Fixes
