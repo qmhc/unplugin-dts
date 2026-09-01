@@ -1,3 +1,5 @@
+# [5.1.0](https://github.com/qmhc/unplugin-dts/compare/v1.0.0-beta.7...v5.1.0) (2026-09-01)
+
 ## [5.0.3](https://github.com/qmhc/unplugin-dts/compare/v1.0.0-beta.7...v5.0.3) (2026-06-24)
 
 ## [5.0.2](https://github.com/qmhc/unplugin-dts/compare/v1.0.0-beta.7...v5.0.2) (2026-06-01)
