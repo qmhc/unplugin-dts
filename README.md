@@ -46,6 +46,22 @@ export default defineConfig({
 
 Supports Vite, Rollup, Rolldown, Webpack, Rspack and Esbuild. See [Usage](./docs/en/usage.md) for detailed bundler setup.
 
+To publish declarations for both ESM and CommonJS, configure both formats explicitly:
+
+```ts
+dts({
+  outDirs: [
+    { dir: 'dist', moduleFormat: 'esm' },
+    { dir: 'dist', moduleFormat: 'cjs' },
+  ],
+  bundleTypes: true,
+})
+```
+
+`moduleFormat` is not inferred from the bundler's JavaScript formats. The plugin writes the
+configured declaration variants, while conditional `exports.types` entries remain package
+metadata that you configure in `package.json`.
+
 ## Documentation
 
 - [Usage](./docs/en/usage.md) - Installation and bundler configuration

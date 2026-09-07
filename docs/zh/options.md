@@ -54,6 +54,10 @@
 | `'esm'`        | `.d.mts`       | `.d.mts.map`      |
 | `undefined`    | `.d.ts`        | `.d.ts.map`       |
 
+该选项需要显式配置：插件不会从 Vite `build.lib.formats` 或其他构建工具的 JavaScript 输出格式
+自动推导声明格式。配置多个格式时，插件会把声明内部引用改写为匹配的 `.mjs` 或 `.cjs` 路径。
+生成文件对应的条件化 `exports.types` 仍需由你在 `package.json` 中配置。
+
 ```ts
 // 简单字符串
 outDirs: 'dist'
@@ -69,6 +73,12 @@ outDirs: [
   'dist',
   { dir: 'dist-cjs', moduleFormat: 'cjs' },
   { dir: 'dist-esm', moduleFormat: 'esm' }
+]
+
+// ESM 与 CommonJS 声明也可以输出到同一个目录
+outDirs: [
+  { dir: 'dist', moduleFormat: 'esm' },
+  { dir: 'dist', moduleFormat: 'cjs' }
 ]
 ```
 

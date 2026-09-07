@@ -271,6 +271,14 @@ export default defineConfig({
 })
 ```
 
+打包会遵循入口原有的公共 API 边界。仅在导出声明内部使用的类型可以作为私有声明被内联，
+但除非源入口显式 re-export，否则插件不会让它变成可从包入口导入的公共符号。
+
+当 `outDirs` 同时包含 ESM 与 CommonJS 变体时，插件对每个入口只运行一次 API Extractor，
+并将完整结果复用于 `.d.mts` 与 `.d.cts`，不会让提取次数随格式数量增加。声明格式仍需通过
+`moduleFormat` 显式配置；插件不会从 Vite 的 JavaScript formats 推导，也不会替你向
+`package.json` 写入条件化的 `exports.types` 元数据。
+
 ## 配合 Vite 模板使用
 
 如果你从 Vite 官方模板开始，你应该指定 `tsconfigPath`：

@@ -31,6 +31,11 @@ export default defineConfig({
 
 Supports Vite, Rollup, Rolldown, Webpack, Rspack and Esbuild.
 
+For dual ESM/CommonJS declarations, explicitly configure two `outDirs` entries with
+`moduleFormat: 'esm'` and `moduleFormat: 'cjs'`. With `bundleTypes`, each entry is bundled once
+and the self-contained result is reused for both declaration formats. Configure conditional
+`exports.types` entries separately in `package.json`.
+
 ## Documentation
 
 - [Usage](../../docs/en/usage.md)

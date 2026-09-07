@@ -6,11 +6,18 @@ import { availableParallelism } from 'node:os'
 import ts from './ts-loader.cjs'
 import { createFilter } from '@rollup/pluginutils'
 import { compare } from 'compare-versions'
-import { green, red, yellow } from 'kolorist'
+import { green, yellow } from 'kolorist'
 import { loadProgramProcessor } from './processor'
 import { createApiExtractorProvider, getHasExtractor, normalizeProvider } from './providers'
 import { JsonResolver, SvelteResolver, VueResolver, parseResolvers } from './resolvers'
-import { hasExportDefault, hasNormalExport, normalizeGlob, transformCode } from './transform'
+import {
+  collectRelativeModuleSpecifiers,
+  hasExportDefault,
+  hasNormalExport,
+  normalizeGlob,
+  transformCode,
+  transformModuleSpecifiers,
+} from './transform'
 import {
   cleanVueDtsFileName,
   defaultIndex,
@@ -1023,6 +1030,10 @@ export class Runtime {
 
     const outDir = outDirs[0].dir
     const primaryOutDirConfig = outDirs[0]
+    // API Extractor 必须先读取 TypeScript 原始可解析的声明图，最终格式在打包后再派生。
+    const intermediateDtsExtension = bundleTypes
+      ? ('.d.ts' as const)
+      : primaryOutDirConfig.dtsExtension
     const emittedFiles = new Map<string, string>()
     const currentEmittedFilePaths = new Set<string>()
     const declareModules: string[] = []
@@ -1117,21 +1128,125 @@ export class Runtime {
       }
     }
 
+    const getOutputRelativePath = (filePath: string) => {
+      const cleanedFilePath = cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath
+      let relativePath = relative(entryRoot, cleanedFilePath)
+
+      // 当 entryRoot 是子目录时，entryRoot 之外的文件会被映射到 outDir 之外。
+      // 此时回退到使用项目根目录作为基准，确保文件仍被正确写入 outDir 内。
+      if (relativePath.startsWith('..')) {
+        relativePath = relative(root, cleanedFilePath)
+      }
+
+      return relativePath
+    }
+
+    const declarationRelativePaths = new Map(
+      Array.from(declarationFiles.keys()).map(filePath => [
+        normalizePath(filePath),
+        getOutputRelativePath(filePath),
+      ]),
+    )
+    const compilerOptions = this.program.getCompilerOptions()
+
+    const createModuleResolutionContext = (
+      files: ReadonlyMap<string, string>,
+      aliases: ReadonlyMap<string, string> = new Map(),
+    ) => {
+      const resolutionFiles = new Map<string, { content: string, sourcePath: string }>()
+
+      for (const [filePath, content] of files) {
+        if (filePath.endsWith('.map')) continue
+
+        const sourcePath = normalizePath(filePath)
+        resolutionFiles.set(sourcePath, { content, sourcePath })
+
+        const alias = aliases.get(sourcePath)
+        if (alias) {
+          resolutionFiles.set(alias, { content, sourcePath })
+        }
+      }
+
+      const resolvedModules = new Map<string, string | undefined>()
+      const host: ts.ModuleResolutionHost = {
+        fileExists: filePath => resolutionFiles.has(normalizePath(filePath)),
+        readFile: filePath => resolutionFiles.get(normalizePath(filePath))?.content,
+      }
+
+      return {
+        resolve(importerPath: string, specifier: string) {
+          const key = `${importerPath}\0${specifier}`
+          if (resolvedModules.has(key)) return resolvedModules.get(key)
+
+          const resolvedModule = ts.resolveModuleName(
+            specifier,
+            importerPath,
+            compilerOptions,
+            host,
+          ).resolvedModule
+          const resolvedPath = resolvedModule
+            ? resolutionFiles.get(normalizePath(resolvedModule.resolvedFileName))?.sourcePath
+            : undefined
+
+          resolvedModules.set(key, resolvedPath)
+          return resolvedPath
+        },
+      }
+    }
+
+    const declarationAliases = new Map<string, string>()
+    if (cleanVueFileName) {
+      for (const filePath of declarationFiles.keys()) {
+        const normalizedPath = normalizePath(filePath)
+        const cleanedPath = normalizePath(cleanVueDtsFileName(filePath))
+        if (cleanedPath !== normalizedPath) {
+          declarationAliases.set(normalizedPath, cleanedPath)
+        }
+      }
+    }
+    const canonicalResolution = createModuleResolutionContext(declarationFiles, declarationAliases)
+
+    const toRuntimeModuleSpecifier = (importerPath: string, targetPath: string) => {
+      let specifier = normalizePath(relative(dirname(importerPath), targetPath))
+      specifier = specifier.replace(dtsRE, (_, prefix) => `.${prefix || ''}js`)
+      return fullRelativeRE.test(specifier) ? specifier : `./${specifier}`
+    }
+
+    const createCanonicalSpecifierTransform = (
+      importerSourcePath: string,
+      targetOutDirConfig: NormalizedOutDir,
+    ) => {
+      const normalizedImporterPath = normalizePath(importerSourcePath)
+      const importerRelativePath = declarationRelativePaths.get(normalizedImporterPath)
+      if (!importerRelativePath) return undefined
+
+      const importerOutputPath = transformDtsPath(
+        resolve(targetOutDirConfig.dir, importerRelativePath),
+        targetOutDirConfig.dtsExtension,
+      )
+
+      return (specifier: string) => {
+        if (!fullRelativeRE.test(specifier)) return specifier
+
+        const resolvedSourcePath = canonicalResolution.resolve(normalizedImporterPath, specifier)
+        const resolvedRelativePath = resolvedSourcePath
+          ? declarationRelativePaths.get(resolvedSourcePath)
+          : undefined
+        if (!resolvedRelativePath) return specifier
+
+        const targetOutputPath = transformDtsPath(
+          resolve(targetOutDirConfig.dir, resolvedRelativePath),
+          targetOutDirConfig.dtsExtension,
+        )
+        return toRuntimeModuleSpecifier(importerOutputPath, targetOutputPath)
+      }
+    }
+
     await runParallel(
       maxConcurrency,
       Array.from(declarationFiles.entries()),
       async ([filePath, content]) => {
-        let relativePath = relative(
-          entryRoot,
-          cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath,
-        )
-
-        // 当 entryRoot 是子目录时，entryRoot 之外的文件会被映射到 outDir 之外。
-        // 此时回退到使用项目根目录作为基准，确保文件仍被正确写入 outDir 内。
-        if (relativePath.startsWith('..')) {
-          relativePath = relative(root, cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath)
-        }
-
+        const relativePath = getOutputRelativePath(filePath)
         const newFilePath = resolve(outDir, relativePath)
 
         if (content) {
@@ -1144,6 +1259,10 @@ export class Runtime {
             clearPureImport,
             cleanVueFileName,
             replaceUnresolvedVLS: !!bundleTypes,
+            transformModuleSpecifier:
+              !bundleTypes && primaryOutDirConfig.moduleFormat
+                ? createCanonicalSpecifierTransform(filePath, primaryOutDirConfig)
+                : undefined,
           })
 
           content = result.content
@@ -1151,12 +1270,12 @@ export class Runtime {
 
           if (result.diffLineCount) {
             // 使用转换后的路径作为 key
-            const transformedPath = transformDtsPath(newFilePath, primaryOutDirConfig.dtsExtension)
+            const transformedPath = transformDtsPath(newFilePath, intermediateDtsExtension)
             prependMappings.set(`${transformedPath}.map`, ';'.repeat(result.diffLineCount))
           }
         }
 
-        await writeOutput(newFilePath, content, outDir, true, primaryOutDirConfig.dtsExtension)
+        await writeOutput(newFilePath, content, outDir, true, intermediateDtsExtension)
       },
     )
 
@@ -1165,18 +1284,7 @@ export class Runtime {
       Array.from(mapFiles.entries()),
       async ([filePath, content]) => {
         const baseDir = dirname(filePath)
-
-        let relativePath = relative(
-          entryRoot,
-          cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath,
-        )
-
-        // 当 entryRoot 是子目录时，entryRoot 之外的文件会被映射到 outDir 之外。
-        // 此时回退到使用项目根目录作为基准，确保文件仍被正确写入 outDir 内。
-        if (relativePath.startsWith('..')) {
-          relativePath = relative(root, cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath)
-        }
-
+        const relativePath = getOutputRelativePath(filePath)
         filePath = resolve(outDir, relativePath)
 
         try {
@@ -1192,7 +1300,7 @@ export class Runtime {
           })
 
           // 使用转换后的路径检查 prependMappings
-          const transformedFilePath = transformDtsPath(filePath, primaryOutDirConfig.dtsExtension)
+          const transformedFilePath = transformDtsPath(filePath, intermediateDtsExtension)
           if (prependMappings.has(transformedFilePath)) {
             sourceMap.mappings = `${prependMappings.get(transformedFilePath)}${sourceMap.mappings}`
           }
@@ -1202,7 +1310,7 @@ export class Runtime {
           logger.warn(`${logPrefix} ${yellow('Processing source map fail:')} ${filePath}`)
         }
 
-        await writeOutput(filePath, content, outDir, true, primaryOutDirConfig.dtsExtension)
+        await writeOutput(filePath, content, outDir, true, intermediateDtsExtension)
       },
     )
 
@@ -1219,11 +1327,10 @@ export class Runtime {
       // 使用主输出目录的后缀配置
       const primaryDtsExtension = primaryOutDirConfig.dtsExtension
 
+      const toCanonicalDtsPath = (file: string) =>
+        `${file.replace(tjsRE, '')}.d.${getJsExtPrefix(file)}ts`
       const transformed = new Set(
-        Array.from(transformedFiles).map(file => {
-          file = relative(entryRoot, file)
-          return `${file.replace(tjsRE, '')}.d.${getJsExtPrefix(file)}ts`
-        }),
+        Array.from(transformedFiles).map(file => toCanonicalDtsPath(relative(entryRoot, file))),
       )
 
       const entryNames = Object.keys(entries)
@@ -1256,14 +1363,11 @@ export class Runtime {
           )
           : typesPath
 
+        const sourceEntryPath = bundleTypes
+          ? toCanonicalDtsPath(entries[name])
+          : tsToDtsWithExtension(entries[name], primaryDtsExtension)
         const sourceEntry = normalizePath(
-          cleanPath(
-            resolve(
-              outDir,
-              relative(entryRoot, tsToDtsWithExtension(entries[name], primaryDtsExtension)),
-            ),
-            emittedFiles,
-          ),
+          cleanPath(resolve(outDir, relative(entryRoot, sourceEntryPath)), emittedFiles),
         )
 
         if (entryDtsPath === sourceEntry) {
@@ -1315,11 +1419,9 @@ export class Runtime {
         logger.info(green(`${logPrefix} Start bundling declaration files...`))
 
         if (!getHasExtractor()) {
-          logger.error(
-            `\n${logPrefix} ${red("Failed to load '@microsoft/api-extractor', have you installed it?")}\n`,
-          )
-          logger.warn(
-            `\n${logPrefix} ${yellow('Error occurred, skip bundle declaration files.')}\n`,
+          throw new Error(
+            `${logPrefix} Failed to load '@microsoft/api-extractor'. ` +
+              'Install it before enabling bundleTypes.',
           )
         } else {
           const rollupFiles = new Set<string>()
@@ -1354,6 +1456,22 @@ export class Runtime {
               libFolder: getTsLibFolder(),
               logger,
             })
+
+            if (!result.succeeded) {
+              throw new Error(
+                `${logPrefix} Failed to bundle declaration file ${path} with ${provider.name ?? 'the configured provider'} ` +
+                  `(${result.errorCount ?? 0} errors, ${result.warningCount ?? 0} warnings).`,
+              )
+            }
+
+            const bundledContent = await readFile(path, 'utf-8')
+            const relativeSpecifiers = collectRelativeModuleSpecifiers(bundledContent)
+            if (relativeSpecifiers.length) {
+              throw new Error(
+                `${logPrefix} Bundled declaration file ${path} contains unresolved relative imports: ` +
+                  relativeSpecifiers.join(', '),
+              )
+            }
 
             emittedFiles.delete(path)
             rollupFiles.add(path)
@@ -1413,6 +1531,8 @@ export class Runtime {
 
     if (outDirs.length > 1) {
       const extraOutDirs = outDirs.slice(1)
+      const primaryResolution = createModuleResolutionContext(emittedFiles)
+      const transformedContentCache = new Map<string, string>()
 
       await runParallel(maxConcurrency, Array.from(emittedFiles), async ([wroteFile, content]) => {
         const relativePath = relative(outDir, wroteFile)
@@ -1420,22 +1540,12 @@ export class Runtime {
         await Promise.all(
           extraOutDirs.map(async targetOutDirConfig => {
             const targetOutDir = targetOutDirConfig.dir
+            let targetContent = content
             // 转换文件路径后缀：从主目录的后缀转换为目标目录的后缀
-            let transformedRelativePath = relativePath
-
-            // 如果主目录和目标目录的后缀不同，需要转换
-            if (primaryOutDirConfig.dtsExtension !== targetOutDirConfig.dtsExtension) {
-              // 先将路径还原为 .d.ts 格式，再转换为目标后缀
-              if (relativePath.endsWith(primaryOutDirConfig.mapExtension)) {
-                // 处理 source map 文件
-                const basePath = relativePath.slice(0, -primaryOutDirConfig.mapExtension.length)
-                transformedRelativePath = basePath + targetOutDirConfig.mapExtension
-              } else if (relativePath.endsWith(primaryOutDirConfig.dtsExtension)) {
-                // 处理声明文件
-                const basePath = relativePath.slice(0, -primaryOutDirConfig.dtsExtension.length)
-                transformedRelativePath = basePath + targetOutDirConfig.dtsExtension
-              }
-            }
+            const transformedRelativePath = transformDtsPath(
+              relativePath,
+              targetOutDirConfig.dtsExtension,
+            )
 
             const path = resolve(targetOutDir, transformedRelativePath)
 
@@ -1444,15 +1554,45 @@ export class Runtime {
               wroteFile.endsWith(primaryOutDirConfig.mapExtension)
             ) {
               // edit `sources` section with correct relative path of source map file
-              const editedContent = editSourceMapDir(content, outDir, targetOutDir)
+              const editedContent = editSourceMapDir(targetContent, outDir, targetOutDir)
               if (editedContent === false) {
                 logger.warn(`${logPrefix} ${yellow('Processing source map fail:')} ${path}`)
               } else if (typeof editedContent === 'string') {
-                content = editedContent
+                targetContent = editedContent
+              }
+            } else if (
+              !bundleTypes &&
+              primaryOutDirConfig.dtsExtension !== targetOutDirConfig.dtsExtension
+            ) {
+              const cacheKey = `${wroteFile}\0${targetOutDirConfig.dtsExtension}`
+              const cachedContent = transformedContentCache.get(cacheKey)
+
+              if (cachedContent !== undefined) {
+                targetContent = cachedContent
+              } else {
+                targetContent = transformModuleSpecifiers(targetContent, specifier => {
+                  if (!fullRelativeRE.test(specifier)) return specifier
+
+                  const resolvedPrimaryPath = primaryResolution.resolve(wroteFile, specifier)
+                  if (!resolvedPrimaryPath) return specifier
+
+                  const targetPath = transformDtsPath(
+                    resolve(targetOutDir, relative(outDir, resolvedPrimaryPath)),
+                    targetOutDirConfig.dtsExtension,
+                  )
+                  return toRuntimeModuleSpecifier(path, targetPath)
+                })
+                transformedContentCache.set(cacheKey, targetContent)
               }
             }
 
-            await writeOutput(path, content, targetOutDir, false, targetOutDirConfig.dtsExtension)
+            await writeOutput(
+              path,
+              targetContent,
+              targetOutDir,
+              false,
+              targetOutDirConfig.dtsExtension,
+            )
           }),
         )
       })

@@ -51,6 +51,11 @@ export default defineConfig({
 })
 ```
 
+When publishing both ESM and CommonJS, explicitly add `outDirs` entries with
+`moduleFormat: 'esm'` and `moduleFormat: 'cjs'`; Vite's JavaScript formats are not inferred.
+Each entry is bundled once and reused for both declaration formats. Configure conditional
+`exports.types` entries separately in `package.json`.
+
 If you start with official Vite template, you should specify the `tsconfigPath`:
 
 ```ts

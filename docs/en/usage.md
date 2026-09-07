@@ -277,6 +277,16 @@ export default defineConfig({
 })
 ```
 
+Bundling follows the entry's public API boundary. A type that is only imported for use inside an
+exported declaration can be inlined as a private declaration, but it is not made importable from
+the package entry unless the source entry re-exports it.
+
+If `outDirs` contains ESM and CommonJS variants, the plugin runs API Extractor once per entry and
+reuses the self-contained result for `.d.mts` and `.d.cts`. This avoids multiplying extraction
+work by the number of formats. Declaration formats must still be configured explicitly with
+`moduleFormat`; the plugin does not infer them from Vite's JavaScript formats or write conditional
+`exports.types` metadata to `package.json`.
+
 ## Using with Vite Templates
 
 If you are using the official Vite template, you should specify `tsconfigPath`:

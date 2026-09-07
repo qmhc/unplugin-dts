@@ -1,7 +1,13 @@
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { hasExportDefault, normalizeGlob, transformCode } from '../src/core/transform'
+import {
+  collectRelativeModuleSpecifiers,
+  hasExportDefault,
+  normalizeGlob,
+  transformCode,
+  transformModuleSpecifiers,
+} from '../src/core/transform'
 import { parseTsAliases } from '../src/core/utils'
 
 import type { Alias } from 'vite'
@@ -21,6 +27,39 @@ describe('transform tests', () => {
     expect(normalizeGlob('a/b*')).toEqual('a/b*/**')
     expect(normalizeGlob('a/*')).toEqual('a/*')
     expect(normalizeGlob('a/**')).toEqual('a/**')
+  })
+
+  it('test: collectRelativeModuleSpecifiers', () => {
+    expect(
+      collectRelativeModuleSpecifiers(`
+        import type { A } from './a'
+        export { B } from '../b.js'
+        type C = import('./c').C
+        import D = require('./d.cjs')
+        import type { External } from 'external'
+      `),
+    ).toEqual(['./a', '../b.js', './c', './d.cjs'])
+  })
+
+  it('test: transformModuleSpecifiers', () => {
+    const content = `
+      import './side-effect'
+      export { A } from './a'
+      type B = import('./b').B
+      import C = require('./c')
+      import('external')
+    `
+
+    expect(
+      transformModuleSpecifiers(content, specifier =>
+        specifier.startsWith('.') ? `${specifier}.mjs` : specifier,
+      ),
+    ).toContain("import './side-effect.mjs'")
+    expect(
+      transformModuleSpecifiers(content, specifier =>
+        specifier.startsWith('.') ? `${specifier}.mjs` : specifier,
+      ),
+    ).toContain("require('./c.mjs')")
   })
 
   it('test: transformCode (dynamic imports to static)', () => {
