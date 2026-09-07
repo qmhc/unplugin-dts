@@ -1265,6 +1265,48 @@ defineProps<{ msg: ${type} }>()
     expect(existsSync(resolve(tempDir, 'dist/index.d.ts'))).toBe(true)
   }, 15_000)
 
+  it('should preserve relative JSON imports in bundled declarations', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'package.json'),
+      JSON.stringify({ name: 'test', version: '1.0.0' }),
+    )
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          resolveJsonModule: true,
+          strict: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(resolve(tempDir, 'src/data.json'), JSON.stringify({ value: true }))
+    writeFileSync(
+      resolve(tempDir, 'src/index.ts'),
+      "import data from './data.json'\nexport { data }\n",
+    )
+
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      entries: {
+        index: resolve(tempDir, 'src/index.ts'),
+      },
+    })
+
+    await runtime.transform(resolve(tempDir, 'src/index.ts'), '')
+    await runtime.emitOutput({ bundleTypes: true })
+
+    expect(readFileSync(resolve(tempDir, 'dist/index.d.ts'), 'utf-8')).toContain("'./data.json'")
+  }, 15_000)
+
   it('should bundle nested multiple entries back to their entry declaration paths', async () => {
     tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
 

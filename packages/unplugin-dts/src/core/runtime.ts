@@ -1,4 +1,4 @@
-import { basename, dirname, relative } from 'node:path'
+import { basename, dirname, extname, relative } from 'node:path'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { availableParallelism } from 'node:os'
@@ -1437,6 +1437,20 @@ export class Runtime {
               invokeOptions,
             }),
           )
+          const bundleResolution = createModuleResolutionContext(emittedFiles)
+          const declarationModuleExtensions = new Set([
+            '',
+            '.js',
+            '.jsx',
+            '.mjs',
+            '.cjs',
+            '.ts',
+            '.tsx',
+            '.mts',
+            '.cts',
+            '.vue',
+            '.svelte',
+          ])
 
           const bundleEntry = async (path: string) => {
             path = normalizePath(path)
@@ -1465,11 +1479,15 @@ export class Runtime {
             }
 
             const bundledContent = await readFile(path, 'utf-8')
-            const relativeSpecifiers = collectRelativeModuleSpecifiers(bundledContent)
-            if (relativeSpecifiers.length) {
+            const danglingSpecifiers = collectRelativeModuleSpecifiers(bundledContent).filter(
+              specifier =>
+                bundleResolution.resolve(path, specifier) !== undefined ||
+                declarationModuleExtensions.has(extname(specifier)),
+            )
+            if (danglingSpecifiers.length) {
               throw new Error(
                 `${logPrefix} Bundled declaration file ${path} contains unresolved relative imports: ` +
-                  relativeSpecifiers.join(', '),
+                  danglingSpecifiers.join(', '),
               )
             }
 
