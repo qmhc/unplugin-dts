@@ -111,6 +111,7 @@ export function transformCode(options: {
   clearPureImport: boolean,
   cleanVueFileName: boolean,
   replaceUnresolvedVLS?: boolean,
+  transformModuleSpecifier?: (specifier: string) => string,
 }) {
   const s = new MagicString(options.content)
   const ast = ts.createSourceFile('a.ts', options.content, ts.ScriptTarget.Latest)
@@ -122,9 +123,13 @@ export function transformCode(options: {
   const declareModules: string[] = []
 
   const toLibName = (origin: string) => {
-    const name = transformAlias(origin, dir, options.aliases, options.aliasesExclude)
+    let name = transformAlias(origin, dir, options.aliases, options.aliasesExclude)
 
-    return options.cleanVueFileName ? name.replace(/\.vue$/, '') : name
+    if (options.cleanVueFileName) {
+      name = name.replace(/\.vue$/, '')
+    }
+
+    return options.transformModuleSpecifier?.(name) ?? name
   }
 
   let indexCount = 0
@@ -166,7 +171,14 @@ export function transformCode(options: {
   walkSourceFile(ast, (node, parent) => {
     if (ts.isImportDeclaration(node)) {
       if (!node.importClause) {
-        options.clearPureImport && s.remove(node.pos, node.end)
+        if (options.clearPureImport) {
+          s.remove(node.pos, node.end)
+        } else if (ts.isStringLiteral(node.moduleSpecifier)) {
+          const libName = toLibName(node.moduleSpecifier.text)
+          if (libName !== node.moduleSpecifier.text) {
+            s.update(node.moduleSpecifier.pos, node.moduleSpecifier.end, ` '${libName}'`)
+          }
+        }
         ++importCount
       } else if (
         ts.isStringLiteral(node.moduleSpecifier) &&
@@ -226,14 +238,12 @@ export function transformCode(options: {
 
     if (
       ts.isImportTypeNode(node) &&
-      node.qualifier &&
       ts.isLiteralTypeNode(node.argument) &&
-      ts.isIdentifier(node.qualifier) &&
       ts.isStringLiteral(node.argument.literal)
     ) {
       const libName = toLibName(node.argument.literal.text)
 
-      if (!options.staticImport) {
+      if (!options.staticImport || !node.qualifier || !ts.isIdentifier(node.qualifier)) {
         s.update(node.argument.literal.pos, node.argument.literal.end, `'${libName}'`)
 
         return !!node.typeArguments
@@ -269,6 +279,22 @@ export function transformCode(options: {
       }
 
       return !!node.typeArguments
+    }
+
+    if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      node.moduleReference.expression &&
+      ts.isStringLiteral(node.moduleReference.expression)
+    ) {
+      const specifier = node.moduleReference.expression
+      const libName = toLibName(specifier.text)
+
+      if (libName !== specifier.text) {
+        s.update(specifier.pos, specifier.end, `'${libName}'`)
+      }
+
+      return false
     }
 
     if (
@@ -346,6 +372,108 @@ export function transformCode(options: {
     diffLineCount:
       importMap.size && importCount < importMap.size ? importMap.size - importCount : null,
   }
+}
+
+/**
+ * 仅改写声明内的模块引用，不改变其余声明结构。
+ */
+export function transformModuleSpecifiers(
+  content: string,
+  transform: (specifier: string) => string,
+) {
+  const s = new MagicString(content)
+  const ast = ts.createSourceFile('declaration.d.ts', content, ts.ScriptTarget.Latest)
+
+  const update = (specifier: ts.StringLiteral) => {
+    const transformed = transform(specifier.text)
+    if (transformed !== specifier.text) {
+      s.update(specifier.getStart(ast), specifier.end, `'${transformed}'`)
+    }
+  }
+
+  walkSourceFile(ast, node => {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      update(node.moduleSpecifier)
+      return false
+    }
+
+    if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteral(node.argument.literal)
+    ) {
+      update(node.argument.literal)
+      return false
+    }
+
+    if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      node.moduleReference.expression &&
+      ts.isStringLiteral(node.moduleReference.expression)
+    ) {
+      update(node.moduleReference.expression)
+      return false
+    }
+
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      update(node.arguments[0])
+      return false
+    }
+
+    if (ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name)) {
+      update(node.name)
+    }
+  })
+
+  return s.toString()
+}
+
+/**
+ * 收集声明文件中仍依赖其他本地文件的相对模块引用。
+ */
+export function collectRelativeModuleSpecifiers(content: string) {
+  const ast = ts.createSourceFile('bundle.d.ts', content, ts.ScriptTarget.Latest)
+  const specifiers = new Set<string>()
+
+  walkSourceFile(ast, node => {
+    let specifier: ts.StringLiteral | undefined
+
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      specifier = node.moduleSpecifier
+    } else if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteral(node.argument.literal)
+    ) {
+      specifier = node.argument.literal
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      node.moduleReference.expression &&
+      ts.isStringLiteral(node.moduleReference.expression)
+    ) {
+      specifier = node.moduleReference.expression
+    }
+
+    if (specifier && /^\.\.?\//.test(specifier.text)) {
+      specifiers.add(specifier.text)
+    }
+  })
+
+  return [...specifiers]
 }
 
 export function hasNormalExport(content: string) {

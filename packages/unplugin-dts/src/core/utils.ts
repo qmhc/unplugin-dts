@@ -662,7 +662,7 @@ export function normalizeOutDirs(
 /**
  * 转换文件路径的后缀
  *
- * 将 .d.ts 路径转换为目标后缀（.d.cts 或 .d.mts）
+ * 在 .d.ts、.d.cts 和 .d.mts 之间转换路径后缀。
  *
  * @param filePath - 原始文件路径
  * @param targetExtension - 目标后缀
@@ -672,23 +672,21 @@ export function transformDtsPath(
   filePath: string,
   targetExtension: '.d.ts' | '.d.cts' | '.d.mts',
 ): string {
-  // 如果目标后缀是 .d.ts，无需转换
-  if (targetExtension === '.d.ts') {
-    return filePath
-  }
+  const declarationMapRE = /\.d\.(?:[cm])?ts\.map$/
+  const declarationRE = /\.d\.(?:[cm])?ts$/
 
-  // 处理 .d.ts.map 文件
-  if (filePath.endsWith('.d.ts.map')) {
+  if (declarationMapRE.test(filePath)) {
     const mapExtension = targetExtension === '.d.cts' ? '.d.cts.map' : '.d.mts.map'
-    return filePath.slice(0, -9) + mapExtension
+    return filePath.replace(
+      declarationMapRE,
+      targetExtension === '.d.ts' ? '.d.ts.map' : mapExtension,
+    )
   }
 
-  // 处理 .d.ts 文件
-  if (filePath.endsWith('.d.ts')) {
-    return filePath.slice(0, -5) + targetExtension
+  if (declarationRE.test(filePath)) {
+    return filePath.replace(declarationRE, targetExtension)
   }
 
-  // 其他情况返回原路径
   return filePath
 }
 
@@ -713,7 +711,7 @@ export function cleanVueDtsFileName(filePath: string): string {
 /**
  * 转换声明文件内容中的 sourceMappingURL 注释后缀
  *
- * 将 `//# sourceMappingURL=xxx.d.ts.map` 转换为对应的后缀
+ * 将 `//# sourceMappingURL=xxx.d.[cm]?ts.map` 转换为对应的后缀。
  *
  * @param content - 声明文件内容
  * @param targetMapExtension - 目标 source map 后缀
@@ -723,15 +721,8 @@ export function transformSourceMappingURL(
   content: string,
   targetMapExtension: '.d.ts.map' | '.d.cts.map' | '.d.mts.map',
 ): string {
-  // 如果目标后缀是 .d.ts.map，无需转换
-  if (targetMapExtension === '.d.ts.map') {
-    return content
-  }
-
-  // 匹配 sourceMappingURL 注释中的 .d.ts.map 后缀
-  // 格式: //# sourceMappingURL=filename.d.ts.map
   return content.replace(
-    /\/\/# sourceMappingURL=(.+)\.d\.ts\.map$/m,
+    /\/\/# sourceMappingURL=(.+)\.d\.(?:[cm])?ts\.map$/m,
     `//# sourceMappingURL=$1${targetMapExtension}`,
   )
 }

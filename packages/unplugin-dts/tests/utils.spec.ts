@@ -439,6 +439,12 @@ describe('utils tests', () => {
     expect(transformDtsPath('/project/dist/index.d.ts.map', '.d.ts')).toBe(
       '/project/dist/index.d.ts.map',
     )
+    expect(transformDtsPath('/project/dist/index.d.mts', '.d.cts')).toBe(
+      '/project/dist/index.d.cts',
+    )
+    expect(transformDtsPath('/project/dist/index.d.cts.map', '.d.ts')).toBe(
+      '/project/dist/index.d.ts.map',
+    )
 
     // 测试非 .d.ts 文件保持不变
     expect(transformDtsPath('/project/dist/index.js', '.d.cts')).toBe('/project/dist/index.js')
@@ -463,6 +469,9 @@ describe('utils tests', () => {
 
     // 测试保持 .d.ts.map 不变
     expect(transformSourceMappingURL(contentWithSourceMap, '.d.ts.map')).toBe(contentWithSourceMap)
+    expect(transformSourceMappingURL('//# sourceMappingURL=index.d.mts.map', '.d.cts.map')).toBe(
+      '//# sourceMappingURL=index.d.cts.map',
+    )
 
     // 测试没有 sourceMappingURL 的内容
     const contentWithoutSourceMap = `export declare const foo: string;`

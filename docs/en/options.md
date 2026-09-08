@@ -54,6 +54,12 @@ When `outDirs` is not provided, the plugin infers it from:
 | `'esm'`        | `.d.mts`  | `.d.mts.map`         |
 | `undefined`    | `.d.ts`   | `.d.ts.map`          |
 
+This option is explicit: the plugin does not infer declaration formats from Vite
+`build.lib.formats` or another bundler's JavaScript output formats. When more than one format is
+configured, internal declaration references are rewritten to the matching `.mjs` or `.cjs`
+specifier. You remain responsible for mapping the generated files with conditional
+`exports.types` entries in `package.json`.
+
 ```ts
 // Simple string
 outDirs: 'dist'
@@ -69,6 +75,12 @@ outDirs: [
   'dist',
   { dir: 'dist-cjs', moduleFormat: 'cjs' },
   { dir: 'dist-esm', moduleFormat: 'esm' }
+]
+
+// ESM and CommonJS declarations can also share one directory
+outDirs: [
+  { dir: 'dist', moduleFormat: 'esm' },
+  { dir: 'dist', moduleFormat: 'cjs' }
 ]
 ```
 

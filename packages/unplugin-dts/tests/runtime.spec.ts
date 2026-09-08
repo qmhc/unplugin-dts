@@ -20,6 +20,7 @@ import {
   rebuildRuntimeProgram,
 } from '../src/core/runtime'
 import { groupVueRootNames } from '../src/core/processor/vue'
+import ts from '../src/core/ts-loader.cjs'
 import { normalizePath } from '../src/core/utils'
 
 function emitDeclarations(program: ReturnType<Runtime['getProgram']>) {
@@ -1085,6 +1086,226 @@ defineProps<{ msg: ${type} }>()
 
     expect(content).toContain("export * from './index.js'")
   })
+
+  it('should bundle canonical declarations once for esm and cjs outputs', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'package.json'),
+      JSON.stringify({
+        name: 'test',
+        version: '1.0.0',
+      }),
+    )
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          strict: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(
+      resolve(tempDir, 'src', 'foo.ts'),
+      'export interface Foo { name: string; value?: number }\n',
+    )
+    writeFileSync(
+      resolve(tempDir, 'src', 'bar.ts'),
+      "import type { Foo } from './foo.js'\nexport interface Bar { id: string; foo: Foo }\n",
+    )
+    writeFileSync(
+      resolve(tempDir, 'src', 'index.ts'),
+      "import type { Foo } from './foo'\nimport type { Bar } from './bar'\nexport interface RootOptions { foo: Foo; bar: Bar }\nexport function createRoot(options: RootOptions): RootOptions { return options }\n",
+    )
+
+    const outputDirectory = resolve(tempDir, 'dist')
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      outDirs: [
+        { dir: outputDirectory, moduleFormat: 'esm' },
+        { dir: outputDirectory, moduleFormat: 'cjs' },
+      ],
+      tsconfigPath: 'tsconfig.json',
+      entries: {
+        index: resolve(tempDir, 'src/index.ts'),
+      },
+    })
+
+    let rollupCount = 0
+    await runtime.transform(resolve(tempDir, 'src/index.ts'), '')
+    await runtime.emitOutput({
+      bundleTypes: true,
+      afterRollup() {
+        rollupCount += 1
+      },
+    })
+
+    const esmContent = readFileSync(resolve(outputDirectory, 'index.d.mts'), 'utf-8')
+    const cjsContent = readFileSync(resolve(outputDirectory, 'index.d.cts'), 'utf-8')
+
+    for (const content of [esmContent, cjsContent]) {
+      expect(content).toContain('interface Foo')
+      expect(content).toContain('interface Bar')
+      expect(content).not.toContain('export declare interface Foo')
+      expect(content).not.toContain('export declare interface Bar')
+      expect(content).not.toMatch(/from ['"]\.\.?\//)
+    }
+    expect(rollupCount).toBe(1)
+  }, 15_000)
+
+  it('should rewrite internal declaration imports for esm and cjs outputs', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          strict: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(resolve(tempDir, 'src', 'foo.ts'), 'export interface Foo { value: string }\n')
+    writeFileSync(
+      resolve(tempDir, 'src', 'index.ts'),
+      "export type { Foo } from './foo'\nexport type Alias = import('./foo.js').Foo\n",
+    )
+
+    const outputDirectory = resolve(tempDir, 'dist')
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      outDirs: [
+        { dir: outputDirectory, moduleFormat: 'esm' },
+        { dir: outputDirectory, moduleFormat: 'cjs' },
+      ],
+      tsconfigPath: 'tsconfig.json',
+    })
+
+    await runtime.emitOutput()
+
+    const esmContent = readFileSync(resolve(outputDirectory, 'index.d.mts'), 'utf-8')
+    const cjsContent = readFileSync(resolve(outputDirectory, 'index.d.cts'), 'utf-8')
+
+    expect(esmContent).toContain("from './foo.mjs'")
+    expect(esmContent).toContain("import('./foo.mjs')")
+    expect(cjsContent).toContain("from './foo.cjs'")
+    expect(cjsContent).toContain("import('./foo.cjs')")
+    expect(existsSync(resolve(outputDirectory, 'foo.d.mts'))).toBe(true)
+    expect(existsSync(resolve(outputDirectory, 'foo.d.cts'))).toBe(true)
+
+    const esmConsumer = resolve(tempDir, 'consumer.mts')
+    const cjsConsumer = resolve(tempDir, 'consumer.cts')
+    writeFileSync(esmConsumer, "import type { Foo, Alias } from './dist/index.mjs'\n")
+    writeFileSync(cjsConsumer, "import type { Foo, Alias } from './dist/index.cjs'\n")
+
+    const consumerProgram = ts.createProgram([esmConsumer, cjsConsumer], {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      noEmit: true,
+      strict: true,
+      skipLibCheck: true,
+    })
+    expect(ts.getPreEmitDiagnostics(consumerProgram)).toEqual([])
+  })
+
+  it('should fail before cleanup when declaration bundling is incomplete', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'package.json'),
+      JSON.stringify({
+        name: 'test',
+        version: '1.0.0',
+      }),
+    )
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          strict: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(
+      resolve(tempDir, 'src', 'index.ts'),
+      "import type { Missing } from './missing'\nexport interface PublicType { value: Missing }\n",
+    )
+
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      entries: {
+        index: resolve(tempDir, 'src/index.ts'),
+      },
+    })
+
+    await runtime.transform(resolve(tempDir, 'src/index.ts'), '')
+
+    await expect(runtime.emitOutput({ bundleTypes: true })).rejects.toThrow(
+      /Failed to bundle declaration file|contains unresolved relative imports/,
+    )
+    expect(existsSync(resolve(tempDir, 'dist/index.d.ts'))).toBe(true)
+  }, 15_000)
+
+  it('should preserve relative JSON imports in bundled declarations', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+
+    writeFileSync(
+      resolve(tempDir, 'package.json'),
+      JSON.stringify({ name: 'test', version: '1.0.0' }),
+    )
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          resolveJsonModule: true,
+          strict: true,
+        },
+        include: ['src/**/*'],
+      }),
+    )
+
+    mkdirSync(resolve(tempDir, 'src'), { recursive: true })
+    writeFileSync(resolve(tempDir, 'src/data.json'), JSON.stringify({ value: true }))
+    writeFileSync(
+      resolve(tempDir, 'src/index.ts'),
+      "import data from './data.json'\nexport { data }\n",
+    )
+
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      entries: {
+        index: resolve(tempDir, 'src/index.ts'),
+      },
+    })
+
+    await runtime.transform(resolve(tempDir, 'src/index.ts'), '')
+    await runtime.emitOutput({ bundleTypes: true })
+
+    expect(readFileSync(resolve(tempDir, 'dist/index.d.ts'), 'utf-8')).toContain("'./data.json'")
+  }, 15_000)
 
   it('should bundle nested multiple entries back to their entry declaration paths', async () => {
     tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))

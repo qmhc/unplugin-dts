@@ -46,6 +46,21 @@ export default defineConfig({
 
 支持 Vite、Rollup、Rolldown、Webpack、Rspack 和 Esbuild。详细的构建工具配置请查看[使用文档](./docs/zh/usage.md)。
 
+同时发布 ESM 与 CommonJS 声明时，需要显式配置两种格式：
+
+```ts
+dts({
+  outDirs: [
+    { dir: 'dist', moduleFormat: 'esm' },
+    { dir: 'dist', moduleFormat: 'cjs' },
+  ],
+  bundleTypes: true,
+})
+```
+
+`moduleFormat` 不会从构建工具的 JavaScript formats 自动推导。插件负责写出配置的声明变体，
+条件化的 `exports.types` 属于包元数据，仍需由你在 `package.json` 中配置。
+
 ## 文档
 
 - [使用](./docs/zh/usage.md) - 安装与各构建工具配置
