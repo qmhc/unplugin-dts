@@ -1141,12 +1141,15 @@ export class Runtime {
       return relativePath
     }
 
-    const declarationRelativePaths = new Map(
-      Array.from(declarationFiles.keys()).map(filePath => [
-        normalizePath(filePath),
-        getOutputRelativePath(filePath),
-      ]),
-    )
+    const rewritePrimarySpecifiers = !bundleTypes && !!primaryOutDirConfig.moduleFormat
+    const declarationRelativePaths = rewritePrimarySpecifiers
+      ? new Map(
+        Array.from(declarationFiles.keys()).map(filePath => [
+          normalizePath(filePath),
+          getOutputRelativePath(filePath),
+        ]),
+      )
+      : undefined
     const compilerOptions = this.program.getCompilerOptions()
 
     const createModuleResolutionContext = (
@@ -1167,7 +1170,12 @@ export class Runtime {
         }
       }
 
-      const resolvedModules = new Map<string, string | undefined>()
+      // 同目录的声明共享解析结果；缓存仅在本次输出中有效，避免 watch 重建复用旧声明图。
+      const resolutionCache = ts.createModuleResolutionCache(
+        currentDir,
+        normalizePath,
+        compilerOptions,
+      )
       const host: ts.ModuleResolutionHost = {
         fileExists: filePath => resolutionFiles.has(normalizePath(filePath)),
         readFile: filePath => resolutionFiles.get(normalizePath(filePath))?.content,
@@ -1175,27 +1183,24 @@ export class Runtime {
 
       return {
         resolve(importerPath: string, specifier: string) {
-          const key = `${importerPath}\0${specifier}`
-          if (resolvedModules.has(key)) return resolvedModules.get(key)
-
           const resolvedModule = ts.resolveModuleName(
             specifier,
             importerPath,
             compilerOptions,
             host,
+            resolutionCache,
           ).resolvedModule
           const resolvedPath = resolvedModule
             ? resolutionFiles.get(normalizePath(resolvedModule.resolvedFileName))?.sourcePath
             : undefined
 
-          resolvedModules.set(key, resolvedPath)
           return resolvedPath
         },
       }
     }
 
     const declarationAliases = new Map<string, string>()
-    if (cleanVueFileName) {
+    if (rewritePrimarySpecifiers && cleanVueFileName) {
       for (const filePath of declarationFiles.keys()) {
         const normalizedPath = normalizePath(filePath)
         const cleanedPath = normalizePath(cleanVueDtsFileName(filePath))
@@ -1204,7 +1209,9 @@ export class Runtime {
         }
       }
     }
-    const canonicalResolution = createModuleResolutionContext(declarationFiles, declarationAliases)
+    const canonicalResolution = rewritePrimarySpecifiers
+      ? createModuleResolutionContext(declarationFiles, declarationAliases)
+      : undefined
 
     const toRuntimeModuleSpecifier = (importerPath: string, targetPath: string) => {
       let specifier = normalizePath(relative(dirname(importerPath), targetPath))
@@ -1216,6 +1223,8 @@ export class Runtime {
       importerSourcePath: string,
       targetOutDirConfig: NormalizedOutDir,
     ) => {
+      if (!declarationRelativePaths || !canonicalResolution) return undefined
+
       const normalizedImporterPath = normalizePath(importerSourcePath)
       const importerRelativePath = declarationRelativePaths.get(normalizedImporterPath)
       if (!importerRelativePath) return undefined
@@ -1259,10 +1268,9 @@ export class Runtime {
             clearPureImport,
             cleanVueFileName,
             replaceUnresolvedVLS: !!bundleTypes,
-            transformModuleSpecifier:
-              !bundleTypes && primaryOutDirConfig.moduleFormat
-                ? createCanonicalSpecifierTransform(filePath, primaryOutDirConfig)
-                : undefined,
+            transformModuleSpecifier: rewritePrimarySpecifiers
+              ? createCanonicalSpecifierTransform(filePath, primaryOutDirConfig)
+              : undefined,
           })
 
           content = result.content
@@ -1549,7 +1557,7 @@ export class Runtime {
 
     if (outDirs.length > 1) {
       const extraOutDirs = outDirs.slice(1)
-      const primaryResolution = createModuleResolutionContext(emittedFiles)
+      let primaryResolution: ReturnType<typeof createModuleResolutionContext> | undefined
       const transformedContentCache = new Map<string, string>()
 
       await runParallel(maxConcurrency, Array.from(emittedFiles), async ([wroteFile, content]) => {
@@ -1591,6 +1599,7 @@ export class Runtime {
                 targetContent = transformModuleSpecifiers(targetContent, specifier => {
                   if (!fullRelativeRE.test(specifier)) return specifier
 
+                  primaryResolution ??= createModuleResolutionContext(emittedFiles)
                   const resolvedPrimaryPath = primaryResolution.resolve(wroteFile, specifier)
                   if (!resolvedPrimaryPath) return specifier
 
