@@ -1,3 +1,9 @@
+## [5.1.1](https://github.com/qmhc/unplugin-dts/compare/v1.0.0-beta.7...v5.1.1) (2026-09-20)
+
+### Bug Fixes
+
+- preserve declaration graph across module formats ([#491](https://github.com/qmhc/unplugin-dts/issues/491)) ([9c6d284](https://github.com/qmhc/unplugin-dts/commit/9c6d284df0fe1fc25aa31b5fb1b3687bf289da67))
+
 # [5.1.0](https://github.com/qmhc/unplugin-dts/compare/v1.0.0-beta.7...v5.1.0) (2026-09-01)
 
 ## [5.0.3](https://github.com/qmhc/unplugin-dts/compare/v1.0.0-beta.7...v5.0.3) (2026-06-24)
