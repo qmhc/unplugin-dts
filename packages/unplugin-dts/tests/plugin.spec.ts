@@ -58,7 +58,7 @@ describe('plugin tests', () => {
 
     await (plugin as any).buildStart.call({ addWatchFile: () => {} })
 
-    await (plugin as any).transform(
+    await (plugin as any).transform.handler(
       'export const parser = {}',
       pathResolve(tempDir, 'syntax.grammar'),
     )

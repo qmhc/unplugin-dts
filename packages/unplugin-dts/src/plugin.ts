@@ -42,6 +42,7 @@ import type { PluginOptions } from './types'
 import type { Logger } from './core'
 import type { ProgramChange } from './core/runtime'
 
+const transformFilterExtensions = [tjsRE, /\.vue$/, /\.svelte$/, /\.json$/]
 const pluginName = 'unplugin:dts'
 const logPrefix = cyan(`[${pluginName}]`)
 
@@ -580,14 +581,21 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
       handleDebug('create ts program')
       buildTime.end(interval)
     },
-    async transform(code, id) {
-      id = normalizePath(id).split('?')[0]
+    transform: {
+      filter: {
+        id: {
+          include: transformFilterExtensions,
+        },
+      },
+      async handler(code, id) {
+        id = normalizePath(id).split('?')[0]
 
-      if (isDev || !runtime) return
+        if (isDev || !runtime) return
 
-      if (!runtime.matchResolver(id) && !tjsRE.test(id)) return
+        if (!runtime.matchResolver(id) && !tjsRE.test(id)) return
 
-      await buildTime.track('transform', () => runtime.transform(id, code))
+        await buildTime.track('transform', () => runtime.transform(id, code))
+      },
     },
     watchChange(id, change) {
       id = normalizePath(id).split('?')[0]
