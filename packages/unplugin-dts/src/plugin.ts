@@ -42,7 +42,7 @@ import type { PluginOptions } from './types'
 import type { Logger } from './core'
 import type { ProgramChange } from './core/runtime'
 
-const transformFilterExtensions = [tjsRE, /\.vue$/, /\.svelte$/, /\.json$/]
+const transformFilterRE = /\.(?:[cm]?[jt]sx?|vue|svelte|json)(?:$|\?)/
 const pluginName = 'unplugin:dts'
 const logPrefix = cyan(`[${pluginName}]`)
 
@@ -582,11 +582,8 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
       buildTime.end(interval)
     },
     transform: {
-      filter: {
-        id: {
-          include: transformFilterExtensions,
-        },
-      },
+      // 自定义 resolver 可支持任意文件名，不能用固定后缀限制。
+      filter: resolvers?.length ? undefined : { id: { include: transformFilterRE } },
       async handler(code, id) {
         id = normalizePath(id).split('?')[0]
 

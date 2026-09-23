@@ -1,10 +1,13 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve as pathResolve, relative } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { normalizePath } from '../src/core/utils'
+import { rollup } from 'rollup'
+
+import { normalizePath, resolve } from '../src/core/utils'
 import { pluginFactory } from '../src/plugin'
+import dts from '../src/rollup'
 
 describe('plugin tests', () => {
   let tempDir: string
@@ -29,44 +32,92 @@ describe('plugin tests', () => {
     writeFileSync(pathResolve(tempDir, 'index.ts'), 'export const foo = 1\n')
     writeFileSync(pathResolve(tempDir, 'syntax.grammar'), 'export const parser = {}\n')
 
-    let runtime: any
-
-    const plugin = pluginFactory(
-      {
-        root: tempDir,
-        tsconfigPath: 'tsconfig.json',
-        resolvers: [
-          {
-            name: 'grammar-resolver',
-            supports: (id: string) => id.endsWith('.grammar'),
-            transform: ({ id, root }) => {
-              return [
-                {
-                  path: relative(root, `${id}.d.ts`),
-                  content: 'export declare const parser: any;\n',
-                },
-              ]
+    const outputs = new Map<string, string>()
+    const bundle = await rollup({
+      input: pathResolve(tempDir, 'syntax.grammar'),
+      plugins: [
+        dts({
+          root: tempDir,
+          tsconfigPath: 'tsconfig.json',
+          resolvers: [
+            {
+              name: 'grammar-resolver',
+              supports: (id: string) => id.endsWith('.grammar'),
+              transform: ({ id, root }) => {
+                return [
+                  {
+                    path: relative(root, `${id}.d.ts`),
+                    content: 'export declare const parser: any;\n',
+                  },
+                ]
+              },
             },
+          ],
+          beforeWriteFile: (filePath, content) => {
+            outputs.set(filePath, content)
+            return false
           },
-        ],
-        afterBootstrap: (r: any) => {
-          runtime = r
-        },
+        }),
+      ],
+    })
+
+    try {
+      await bundle.write({ dir: resolve(tempDir, 'dist'), format: 'es' })
+      const declaration = [...outputs].find(([file]) => file.endsWith('/syntax.grammar.d.ts'))
+      expect(declaration?.[1]).toBe('export declare const parser: any;\n')
+    } finally {
+      await bundle.close()
+    }
+  })
+
+  it('should preserve query modules and filter unrelated files in Rollup', async () => {
+    tempDir = mkdtempSync(pathResolve(tmpdir(), 'unplugin-dts-'))
+    writeFileSync(resolve(tempDir, 'tsconfig.json'), JSON.stringify({ include: ['**/*'] }))
+    writeFileSync(resolve(tempDir, 'index.ts'), 'export const value = 1\n')
+    writeFileSync(resolve(tempDir, 'Component.svelte'), '<p>Hello</p>\n')
+
+    const outputs = new Map<string, string>()
+    const plugin = dts({
+      root: tempDir,
+      processor: 'ts',
+      tsconfigPath: 'tsconfig.json',
+      resolvers: [],
+      beforeWriteFile: (filePath, content) => {
+        outputs.set(filePath, content)
+        return false
       },
-      { framework: 'vite' },
-    )
+    })
+    if (!plugin.transform || typeof plugin.transform !== 'object') {
+      throw new Error('Expected a filtered transform hook')
+    }
+    const transform = vi.spyOn(plugin.transform, 'handler')
+    const tsId = resolve(tempDir, 'index.ts')
+    const svelteId = `${resolve(tempDir, 'Component.svelte')}?custom`
+    const cssId = resolve(tempDir, 'style.css')
+    const bundle = await rollup({
+      input: [tsId, svelteId, cssId],
+      plugins: [
+        {
+          name: 'query-fixture',
+          resolveId: id => id,
+          load: id => (id === tsId ? null : 'export default {}'),
+        },
+        plugin,
+      ],
+    })
 
-    await (plugin as any).buildStart.call({ addWatchFile: () => {} })
-
-    await (plugin as any).transform.handler(
-      'export const parser = {}',
-      pathResolve(tempDir, 'syntax.grammar'),
-    )
-
-    const dtsPath = normalizePath(pathResolve(tempDir, 'syntax.grammar.d.ts'))
-
-    expect(runtime.outputFiles.has(dtsPath)).toBe(true)
-    expect(runtime.outputFiles.get(dtsPath)).toBe('export declare const parser: any;\n')
+    try {
+      await bundle.write({ dir: resolve(tempDir, 'dist'), format: 'es' })
+      expect(transform.mock.calls.map(([, id]) => id)).toEqual(
+        expect.arrayContaining([tsId, svelteId]),
+      )
+      expect(transform.mock.calls.map(([, id]) => id)).not.toContain(cssId)
+      expect([...outputs.keys()].some(file => file.endsWith('/index.d.ts'))).toBe(true)
+      const declaration = [...outputs].find(([file]) => file.endsWith('/Component.svelte.d.ts'))
+      expect(declaration?.[1]).toContain("from 'svelte'")
+    } finally {
+      await bundle.close()
+    }
   })
 
   it('should rebuild the queued Program before transforms in buildStart', async () => {
