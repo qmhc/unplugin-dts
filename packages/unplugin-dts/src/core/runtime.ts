@@ -1031,10 +1031,10 @@ export class Runtime {
     const outDir = outDirs[0].dir
     const primaryOutDirConfig = outDirs[0]
     // API Extractor 必须先读取 TypeScript 原始可解析的声明图，最终格式在打包后再派生。
-    const intermediateDtsExtension = bundleTypes
-      ? ('.d.ts' as const)
-      : primaryOutDirConfig.dtsExtension
+    const intermediateDtsExtension = bundleTypes ? undefined : primaryOutDirConfig.dtsExtension
     const emittedFiles = new Map<string, string>()
+    // 保留转换前的路径，使未指定格式的次输出目录能恢复原始声明后缀。
+    const canonicalOutputPaths = new Map<string, string>()
     const currentEmittedFilePaths = new Set<string>()
     const declareModules: string[] = []
 
@@ -1043,20 +1043,24 @@ export class Runtime {
       content: string,
       outDir: string,
       record = true,
-      dtsExtension: '.d.ts' | '.d.cts' | '.d.mts' = '.d.ts',
+      dtsExtension?: NormalizedOutDir['dtsExtension'],
     ) => {
+      let canonicalPath = canonicalOutputPaths.get(normalizePath(path)) ?? path
       // 根据 moduleFormat 转换文件路径后缀
       path = transformDtsPath(path, dtsExtension)
 
       // 对于声明文件（非 .map 文件），转换 sourceMappingURL 注释中的后缀
       if (!path.endsWith('.map')) {
-        const mapExtension =
-          dtsExtension === '.d.cts'
-            ? '.d.cts.map'
-            : dtsExtension === '.d.mts'
-              ? '.d.mts.map'
-              : '.d.ts.map'
+        const mapExtension = `.d.${getJsExtPrefix(path)}ts.map` as const
         content = transformSourceMappingURL(content, mapExtension)
+      } else {
+        try {
+          const sourceMap = JSON.parse(content)
+          sourceMap.file = basename(path.slice(0, -4))
+          content = JSON.stringify(sourceMap)
+        } catch {
+          // 非法 source map 已在处理阶段报告，保留原始内容供调用方检查。
+        }
       }
 
       if (typeof beforeWriteFile === 'function') {
@@ -1065,6 +1069,12 @@ export class Runtime {
         if (result === false) return
 
         if (result) {
+          if (result.filePath && result.filePath !== path) {
+            canonicalPath = transformDtsPath(
+              result.filePath,
+              `.d.${getJsExtPrefix(canonicalPath.replace(/\.map$/, ''))}ts`,
+            )
+          }
           path = result.filePath || path
           content = result.content ?? content
         }
@@ -1083,6 +1093,7 @@ export class Runtime {
       await writeFile(path, content, 'utf-8')
       currentEmittedFilePaths.add(path)
       record && emittedFiles.set(path, content)
+      record && canonicalOutputPaths.set(path, canonicalPath)
     }
 
     const { programProcessor } = getRuntimeInternals(this)
@@ -1335,8 +1346,7 @@ export class Runtime {
       // 使用主输出目录的后缀配置
       const primaryDtsExtension = primaryOutDirConfig.dtsExtension
 
-      const toCanonicalDtsPath = (file: string) =>
-        `${file.replace(tjsRE, '')}.d.${getJsExtPrefix(file)}ts`
+      const toCanonicalDtsPath = (file: string) => tsToDtsWithExtension(file)
       const transformed = new Set(
         Array.from(transformedFiles).map(file => toCanonicalDtsPath(relative(entryRoot, file))),
       )
@@ -1346,9 +1356,19 @@ export class Runtime {
       const multiple = entryNames.length > 1
       // 空入口无需 API Extractor 处理，避免从整个 TS Program 引入无关的全局声明。
       const emptyEntryFiles = new Set<string>()
+      const entryPaths = new Map<string, string>()
+
+      const entryExtension = (name: string) => `.d.${getJsExtPrefix(entries[name])}ts` as const
 
       let typesPath = cleanPath(
-        types ? resolve(root, types) : resolve(outDir, indexName),
+        types
+          ? resolve(root, types)
+          : resolve(
+            outDir,
+            entryNames.length === 1
+              ? transformDtsPath(indexName, entryExtension(entryNames[0]))
+              : indexName,
+          ),
         emittedFiles,
       )
 
@@ -1360,16 +1380,19 @@ export class Runtime {
         typesPath = `${typesPath.replace(tjsRE, '')}.d.${getJsExtPrefix(typesPath)}ts`
       }
 
-      // 根据 moduleFormat 转换 typesPath 后缀
-      typesPath = transformDtsPath(typesPath, primaryDtsExtension)
+      // 打包入口也保留原始后缀，避免覆盖尚未打包的声明图。
+      const entryDtsExtension = bundleTypes ? undefined : primaryDtsExtension
 
       for (const name of entryNames) {
-        const entryDtsPath = multiple
+        const canonicalEntryPath = multiple
           ? cleanPath(
-            resolve(outDir, tsToDtsWithExtension(name, primaryDtsExtension)),
+            resolve(outDir, tsToDtsWithExtension(name, entryExtension(name))),
             emittedFiles,
           )
           : typesPath
+        const entryDtsPath = transformDtsPath(canonicalEntryPath, entryDtsExtension)
+        entryPaths.set(name, entryDtsPath)
+        canonicalOutputPaths.set(normalizePath(entryDtsPath), canonicalEntryPath)
 
         const sourceEntryPath = bundleTypes
           ? toCanonicalDtsPath(entries[name])
@@ -1383,7 +1406,7 @@ export class Runtime {
 
           const emptyEntryPath = normalizePath(cleanPath(entryDtsPath, emittedFiles))
 
-          await writeOutput(emptyEntryPath, 'export {}\n', outDir, true, primaryDtsExtension)
+          await writeOutput(emptyEntryPath, 'export {}\n', outDir, true, entryDtsExtension)
 
           if (emittedFiles.has(emptyEntryPath)) {
             emptyEntryFiles.add(emptyEntryPath)
@@ -1414,7 +1437,7 @@ export class Runtime {
         // 入口文件已经使用了正确的后缀，无需再次转换
         const syntheticEntryPath = normalizePath(cleanPath(entryDtsPath, emittedFiles))
 
-        await writeOutput(syntheticEntryPath, content, outDir, true, primaryDtsExtension)
+        await writeOutput(syntheticEntryPath, content, outDir, true, entryDtsExtension)
 
         if (isEmptyDeclarationEntry(sourceContent) && emittedFiles.has(syntheticEntryPath)) {
           emptyEntryFiles.add(syntheticEntryPath)
@@ -1507,20 +1530,11 @@ export class Runtime {
             }
           }
 
-          if (multiple) {
-            await runParallel(maxConcurrency, entryNames, async name => {
-              // 使用正确的后缀生成打包文件路径
-              await bundleEntry(
-                cleanPath(
-                  resolve(outDir, tsToDtsWithExtension(name, primaryDtsExtension)),
-                  emittedFiles,
-                ),
-              )
-            })
-          } else {
-            // typesPath 已经在上面转换为正确的后缀
-            await bundleEntry(typesPath)
-          }
+          await runParallel(
+            maxConcurrency,
+            entryPaths.size ? Array.from(entryPaths.values()) : [typesPath],
+            bundleEntry,
+          )
 
           const emptyEntries = new Map(
             Array.from(emittedFiles).filter(([filePath]) => emptyEntryFiles.has(filePath)),
@@ -1534,20 +1548,25 @@ export class Runtime {
           removeDirIfEmpty(outDir)
           emittedFiles.clear()
 
-          for (const [filePath, content] of emptyEntries) {
-            emittedFiles.set(filePath, content)
-          }
-
           const declared = declareModules.join('\n')
 
-          await runParallel(maxConcurrency, [...rollupFiles], async filePath => {
+          const bundledPaths = [...rollupFiles, ...emptyEntries.keys()]
+          await runParallel(maxConcurrency, bundledPaths, async filePath => {
             await writeOutput(
               filePath,
-              (await readFile(filePath, 'utf-8')) + (declared ? `\n${declared}` : ''),
+              emptyEntries.get(filePath) ??
+                (await readFile(filePath, 'utf-8')) + (declared ? `\n${declared}` : ''),
               dirname(filePath),
               true,
               primaryDtsExtension,
             )
+          })
+
+          // 最终格式可能与中间文件不同，只清理未被最终输出复用的中间路径。
+          await runParallel(maxConcurrency, bundledPaths, async filePath => {
+            if (emittedFiles.has(filePath)) return
+            await unlink(filePath)
+            currentEmittedFilePaths.delete(filePath)
           })
 
           handleDebug('rollup output')
@@ -1561,7 +1580,7 @@ export class Runtime {
       const transformedContentCache = new Map<string, string>()
 
       await runParallel(maxConcurrency, Array.from(emittedFiles), async ([wroteFile, content]) => {
-        const relativePath = relative(outDir, wroteFile)
+        const relativePath = relative(outDir, canonicalOutputPaths.get(wroteFile) ?? wroteFile)
 
         await Promise.all(
           extraOutDirs.map(async targetOutDirConfig => {
@@ -1575,10 +1594,7 @@ export class Runtime {
 
             const path = resolve(targetOutDir, transformedRelativePath)
 
-            if (
-              wroteFile.endsWith('.map') ||
-              wroteFile.endsWith(primaryOutDirConfig.mapExtension)
-            ) {
+            if (wroteFile.endsWith('.map')) {
               // edit `sources` section with correct relative path of source map file
               const editedContent = editSourceMapDir(targetContent, outDir, targetOutDir)
               if (editedContent === false) {
@@ -1604,7 +1620,13 @@ export class Runtime {
                   if (!resolvedPrimaryPath) return specifier
 
                   const targetPath = transformDtsPath(
-                    resolve(targetOutDir, relative(outDir, resolvedPrimaryPath)),
+                    resolve(
+                      targetOutDir,
+                      relative(
+                        outDir,
+                        canonicalOutputPaths.get(resolvedPrimaryPath) ?? resolvedPrimaryPath,
+                      ),
+                    ),
                     targetOutDirConfig.dtsExtension,
                   )
                   return toRuntimeModuleSpecifier(path, targetPath)

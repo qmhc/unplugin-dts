@@ -276,7 +276,7 @@ describe('utils tests', () => {
     // 测试 esm 格式
     expect(getDtsExtension('esm')).toBe('.d.mts')
     // 测试 undefined（默认）
-    expect(getDtsExtension(undefined)).toBe('.d.ts')
+    expect(getDtsExtension(undefined)).toBeUndefined()
   })
 
   it('test: getMapExtension', () => {
@@ -285,7 +285,7 @@ describe('utils tests', () => {
     // 测试 esm 格式
     expect(getMapExtension('esm')).toBe('.d.mts.map')
     // 测试 undefined（默认）
-    expect(getMapExtension(undefined)).toBe('.d.ts.map')
+    expect(getMapExtension(undefined)).toBeUndefined()
   })
 
   it('test: normalizeOutDirs', () => {
@@ -300,8 +300,8 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, defaultDir),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
     ])
 
@@ -310,8 +310,8 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, 'types'),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
     ])
 
@@ -320,14 +320,14 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, 'dist'),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
       {
         dir: expectedDir(root, 'types'),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
     ])
 
@@ -381,8 +381,8 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, 'dist'),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
       {
         dir: expectedDir(root, 'dist-cjs'),
@@ -403,8 +403,8 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, defaultDir),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
     ])
 
@@ -413,8 +413,8 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, 'types'),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
     ])
   })

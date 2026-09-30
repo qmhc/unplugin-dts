@@ -50,7 +50,7 @@ export interface OutDirConfig {
    * Module format, determines declaration file extension
    * - 'cjs': generates .d.cts files
    * - 'esm': generates .d.mts files
-   * - undefined: generates .d.ts files (default)
+   * - undefined：保留 TypeScript 原始声明后缀（默认）
    */
   moduleFormat?: ModuleFormat,
 }
@@ -65,10 +65,10 @@ export interface NormalizedOutDir {
   dir: string,
   /** Module format */
   moduleFormat: ModuleFormat | undefined,
-  /** Declaration file extension */
-  dtsExtension: '.d.ts' | '.d.cts' | '.d.mts',
+  /** 声明后缀；未指定时保留原始后缀 */
+  dtsExtension: '.d.ts' | '.d.cts' | '.d.mts' | undefined,
   /** Source map file extension */
-  mapExtension: '.d.ts.map' | '.d.cts.map' | '.d.mts.map',
+  mapExtension: '.d.ts.map' | '.d.cts.map' | '.d.mts.map' | undefined,
 }
 
 export interface Logger {

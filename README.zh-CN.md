@@ -46,6 +46,8 @@ export default defineConfig({
 
 支持 Vite、Rollup、Rolldown、Webpack、Rspack 和 Esbuild。详细的构建工具配置请查看[使用文档](./docs/zh/usage.md)。
 
+未指定 `moduleFormat` 时，插件保留 TypeScript 的声明后缀：`.ts` → `.d.ts`、`.mts` → `.d.mts`、`.cts` → `.d.cts`，声明 map 也保持对应后缀。
+
 同时发布 ESM 与 CommonJS 声明时，需要显式配置两种格式：
 
 ```ts

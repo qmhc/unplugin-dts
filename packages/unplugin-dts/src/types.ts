@@ -47,6 +47,9 @@ export interface PluginInstance {
   esbuild(options?: PluginOptions): any,
 }
 
+/**
+ * 插件配置；outDirs 未指定 moduleFormat 时保留 TypeScript 原始声明后缀。
+ */
 export interface PluginOptions
   extends Omit<Partial<CreateRuntimeOptions>, 'entries' | 'libName' | 'indexName' | 'logger'>,
   Omit<EmitOptions, 'logPrefix'> {

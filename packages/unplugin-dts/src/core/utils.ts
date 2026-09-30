@@ -51,14 +51,14 @@ export function tsToDts(path: string) {
  * 将 TypeScript 文件路径转换为指定后缀的声明文件路径
  *
  * @param path - TypeScript 文件路径
- * @param dtsExtension - 目标声明文件后缀
+ * @param dtsExtension - 目标声明文件后缀；未指定时根据源文件推导
  * @returns 转换后的声明文件路径
  */
 export function tsToDtsWithExtension(
   path: string,
-  dtsExtension: '.d.ts' | '.d.cts' | '.d.mts' = '.d.ts',
+  dtsExtension: '.d.ts' | '.d.cts' | '.d.mts' = `.d.${getJsExtPrefix(path)}ts`,
 ): string {
-  return `${path.replace(tsRE, '')}${dtsExtension}`
+  return `${path.replace(tjsRE, '')}${dtsExtension}`
 }
 
 const windowsSlashRE = /\\+/g
@@ -558,14 +558,14 @@ export function tryGetPackageInfo(name: string) {
  */
 export function getDtsExtension(
   moduleFormat: ModuleFormat | undefined,
-): '.d.ts' | '.d.cts' | '.d.mts' {
+): NormalizedOutDir['dtsExtension'] {
   switch (moduleFormat) {
     case 'cjs':
       return '.d.cts'
     case 'esm':
       return '.d.mts'
     default:
-      return '.d.ts'
+      return undefined
   }
 }
 
@@ -577,14 +577,14 @@ export function getDtsExtension(
  */
 export function getMapExtension(
   moduleFormat: ModuleFormat | undefined,
-): '.d.ts.map' | '.d.cts.map' | '.d.mts.map' {
+): NormalizedOutDir['mapExtension'] {
   switch (moduleFormat) {
     case 'cjs':
       return '.d.cts.map'
     case 'esm':
       return '.d.mts.map'
     default:
-      return '.d.ts.map'
+      return undefined
   }
 }
 
@@ -603,8 +603,8 @@ function normalizeOutDirItem(item: string | OutDirConfig, root: string): Normali
     return {
       dir: ensureAbsolute(item, root),
       moduleFormat: undefined,
-      dtsExtension: '.d.ts',
-      mapExtension: '.d.ts.map',
+      dtsExtension: undefined,
+      mapExtension: undefined,
     }
   }
 
@@ -665,13 +665,15 @@ export function normalizeOutDirs(
  * 在 .d.ts、.d.cts 和 .d.mts 之间转换路径后缀。
  *
  * @param filePath - 原始文件路径
- * @param targetExtension - 目标后缀
+ * @param targetExtension - 目标后缀；未指定时保留原始后缀
  * @returns 转换后的文件路径
  */
 export function transformDtsPath(
   filePath: string,
-  targetExtension: '.d.ts' | '.d.cts' | '.d.mts',
+  targetExtension: NormalizedOutDir['dtsExtension'],
 ): string {
+  if (!targetExtension) return filePath
+
   const declarationMapRE = /\.d\.(?:[cm])?ts\.map$/
   const declarationRE = /\.d\.(?:[cm])?ts$/
 

@@ -21,7 +21,7 @@ import {
 } from '../src/core/runtime'
 import { groupVueRootNames } from '../src/core/processor/vue'
 import ts from '../src/core/ts-loader.cjs'
-import { normalizePath } from '../src/core/utils'
+import { normalizePath, resolve as resolvePath } from '../src/core/utils'
 
 function emitDeclarations(program: ReturnType<Runtime['getProgram']>) {
   const declarations = new Map<string, string>()
@@ -1086,6 +1086,193 @@ defineProps<{ msg: ${type} }>()
 
     expect(content).toContain("export * from './index.js'")
   })
+
+  it.each(['default', 'explicit-first'] as const)(
+    'should preserve native declaration extensions (%s)',
+    async outputMode => {
+      tempDir = mkdtempSync(resolvePath(tmpdir(), 'unplugin-dts-'))
+      writeFileSync(
+        resolvePath(tempDir, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: {
+            module: 'NodeNext',
+            moduleResolution: 'NodeNext',
+            declarationMap: true,
+            strict: true,
+          },
+          include: ['src/**/*'],
+        }),
+      )
+      mkdirSync(resolvePath(tempDir, 'src'))
+      writeFileSync(
+        resolvePath(tempDir, 'src/index.mts'),
+        "export type { Foo } from './foo.mjs'\nexport type { Common } from './common.cjs'\nexport type { Plain } from './plain.js'\n",
+      )
+      writeFileSync(resolvePath(tempDir, 'src/foo.mts'), 'export interface Foo { value: string }\n')
+      writeFileSync(
+        resolvePath(tempDir, 'src/common.cts'),
+        'export interface Common { value: number }\n',
+      )
+      writeFileSync(
+        resolvePath(tempDir, 'src/plain.ts'),
+        'export interface Plain { value: boolean }\n',
+      )
+
+      const nativeDir = resolvePath(tempDir, 'dist')
+      const cjsDir = resolvePath(tempDir, 'cjs')
+      const runtime = await Runtime.toInstance({
+        root: tempDir,
+        tsconfigPath: 'tsconfig.json',
+        outDirs:
+          outputMode === 'default'
+            ? undefined
+            : [{ dir: cjsDir, moduleFormat: 'cjs' }, { dir: nativeDir }],
+      })
+      await runtime.emitOutput()
+
+      for (const [name, extension] of [
+        ['index', 'mts'],
+        ['foo', 'mts'],
+        ['common', 'cts'],
+        ['plain', 'ts'],
+      ]) {
+        const fileName = `${name}.d.${extension}`
+        expect(readFileSync(resolvePath(nativeDir, fileName), 'utf8')).toContain(
+          `//# sourceMappingURL=${fileName}.map`,
+        )
+        const map = JSON.parse(readFileSync(resolvePath(nativeDir, `${fileName}.map`), 'utf8'))
+        expect(map.file).toBe(fileName)
+        expect(resolvePath(nativeDir, map.sources[0])).toBe(
+          resolvePath(tempDir, `src/${name}.${extension}`),
+        )
+      }
+      expect(existsSync(resolvePath(nativeDir, 'index.d.ts'))).toBe(false)
+
+      const consumer = resolvePath(tempDir, 'consumer.mts')
+      const imports =
+        outputMode === 'default' ? ['./dist/index.mjs'] : ['./dist/index.mjs', './cjs/index.cjs']
+      writeFileSync(
+        consumer,
+        imports
+          .map(
+            (entry, i) =>
+              `import type { Foo as Foo${i}, Common as Common${i}, Plain as Plain${i} } from '${entry}'\nconst foo${i}: Foo${i} = { value: 'ok' }\nconst common${i}: Common${i} = { value: 1 }\nconst plain${i}: Plain${i} = { value: true }\n// @ts-expect-error\nconst invalid${i}: Foo${i} = { value: 1 }\n`,
+          )
+          .join('\n'),
+      )
+      const consumerProgram = ts.createProgram([consumer], {
+        module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        noEmit: true,
+        strict: true,
+        types: [],
+      })
+      expect(ts.getPreEmitDiagnostics(consumerProgram)).toEqual([])
+    },
+  )
+
+  it.each([false, true])(
+    'should preserve native entry extensions (bundle: %s)',
+    async bundleTypes => {
+      tempDir = mkdtempSync(resolvePath(tmpdir(), 'unplugin-dts-'))
+      writeFileSync(
+        resolvePath(tempDir, 'package.json'),
+        JSON.stringify({ name: 'test', version: '1.0.0' }),
+      )
+      writeFileSync(
+        resolvePath(tempDir, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', strict: true },
+          include: ['src/**/*'],
+        }),
+      )
+      mkdirSync(resolvePath(tempDir, 'src'))
+      writeFileSync(resolvePath(tempDir, 'src/esm.mts'), "export type { Foo } from './foo.mjs'\n")
+      writeFileSync(resolvePath(tempDir, 'src/foo.mts'), 'export interface Foo { value: string }\n')
+      writeFileSync(resolvePath(tempDir, 'src/cjs.cts'), "export type { Bar } from './bar.cjs'\n")
+      writeFileSync(resolvePath(tempDir, 'src/bar.cts'), 'export interface Bar { value: number }\n')
+      const runtime = await Runtime.toInstance({
+        root: tempDir,
+        tsconfigPath: 'tsconfig.json',
+        entries: {
+          publicEsm: resolvePath(tempDir, 'src/esm.mts'),
+          publicCjs: resolvePath(tempDir, 'src/cjs.cts'),
+        },
+      })
+      await runtime.emitOutput({ insertTypesEntry: true, bundleTypes })
+      const entryPaths = [
+        ['publicEsm', 'mts', 'Foo'],
+        ['publicCjs', 'cts', 'Bar'],
+      ].map(([name, extension, exported]) => {
+        const entryPath = resolvePath(tempDir, `dist/${name}.d.${extension}`)
+        expect(readFileSync(entryPath, 'utf8')).toContain(
+          bundleTypes ? `interface ${exported}` : 'export * from',
+        )
+        return entryPath
+      })
+      const program = ts.createProgram(entryPaths, {
+        module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        noEmit: true,
+        types: [],
+      })
+      expect(ts.getPreEmitDiagnostics(program)).toEqual([])
+    },
+    15_000,
+  )
+
+  it.each(['default', 'explicit', 'implicit-entry'] as const)(
+    'should bundle a native single entry (%s)',
+    async mode => {
+      tempDir = mkdtempSync(resolvePath(tmpdir(), 'unplugin-dts-'))
+      writeFileSync(
+        resolvePath(tempDir, 'package.json'),
+        JSON.stringify({
+          name: 'test',
+          version: '1.0.0',
+          types: mode === 'explicit' ? 'dist/public.d.mts' : undefined,
+        }),
+      )
+      writeFileSync(
+        resolvePath(tempDir, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', strict: true },
+          include: ['src/**/*'],
+        }),
+      )
+      mkdirSync(resolvePath(tempDir, 'src'))
+      const extension = mode === 'implicit-entry' ? 'ts' : 'mts'
+      const jsExtension = mode === 'implicit-entry' ? 'js' : 'mjs'
+      writeFileSync(
+        resolvePath(tempDir, `src/index.${extension}`),
+        `export type { Foo } from './foo.${jsExtension}'\n`,
+      )
+      writeFileSync(
+        resolvePath(tempDir, `src/foo.${extension}`),
+        'export interface Foo { value: string }\n',
+      )
+      const runtime = await Runtime.toInstance({
+        root: tempDir,
+        tsconfigPath: 'tsconfig.json',
+        entries:
+          mode === 'implicit-entry' ? undefined : { index: resolvePath(tempDir, 'src/index.mts') },
+        outDirs: mode === 'explicit' ? [{ dir: 'dist', moduleFormat: 'cjs' }, 'types'] : undefined,
+      })
+      await runtime.emitOutput({ bundleTypes: true })
+      const output = mode === 'explicit' ? 'public.d.cts' : `index.d.${extension}`
+      const content = readFileSync(resolvePath(tempDir, 'dist', output), 'utf8')
+      expect(content).toContain('interface Foo')
+      expect(content).not.toMatch(/from ['"]\.\.?\//)
+      if (mode !== 'implicit-entry') {
+        expect(existsSync(resolvePath(tempDir, 'dist/index.d.ts'))).toBe(false)
+      }
+      if (mode === 'explicit') {
+        expect(existsSync(resolvePath(tempDir, 'dist/public.d.mts'))).toBe(false)
+        expect(readFileSync(resolvePath(tempDir, 'types/public.d.mts'), 'utf8')).toBe(content)
+      }
+    },
+    15_000,
+  )
 
   it('should bundle canonical declarations once for esm and cjs outputs', async () => {
     tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))

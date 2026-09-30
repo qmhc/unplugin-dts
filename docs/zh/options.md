@@ -48,11 +48,13 @@
 
 `moduleFormat` 控制生成文件的扩展名：
 
-| `moduleFormat` | 声明文件扩展名 | Source Map 扩展名 |
-| -------------- | -------------- | ----------------- |
-| `'cjs'`        | `.d.cts`       | `.d.cts.map`      |
-| `'esm'`        | `.d.mts`       | `.d.mts.map`      |
-| `undefined`    | `.d.ts`        | `.d.ts.map`       |
+| `moduleFormat` | 声明文件扩展名   | Source Map 扩展名 |
+| -------------- | ---------------- | ----------------- |
+| `'cjs'`        | `.d.cts`         | `.d.cts.map`      |
+| `'esm'`        | `.d.mts`         | `.d.mts.map`      |
+| `undefined`    | 保留原始声明后缀 | 保留对应 map 后缀 |
+
+未指定 `moduleFormat` 时，插件保留 TypeScript 的声明后缀：`.ts` → `.d.ts`、`.mts` → `.d.mts`、`.cts` → `.d.cts`，声明 map 也保持对应后缀。
 
 该选项需要显式配置：插件不会从 Vite `build.lib.formats` 或其他构建工具的 JavaScript 输出格式
 自动推导声明格式。配置多个格式时，插件会把声明内部引用改写为匹配的 `.mjs` 或 `.cjs` 路径。
@@ -362,7 +364,7 @@ export interface OutDirConfig {
    * 模块格式
    * - 'cjs'：生成 .d.cts 文件
    * - 'esm'：生成 .d.mts 文件
-   * - undefined：生成 .d.ts 文件（默认）
+   * - undefined：保留 TypeScript 原始声明后缀（默认）
    */
   moduleFormat?: 'cjs' | 'esm',
 }

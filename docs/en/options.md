@@ -48,11 +48,13 @@ When `outDirs` is not provided, the plugin infers it from:
 
 `moduleFormat` controls the declaration file extension:
 
-| `moduleFormat` | Extension | Source Map Extension |
-| -------------- | --------- | -------------------- |
-| `'cjs'`        | `.d.cts`  | `.d.cts.map`         |
-| `'esm'`        | `.d.mts`  | `.d.mts.map`         |
-| `undefined`    | `.d.ts`   | `.d.ts.map`          |
+| `moduleFormat` | Extension                   | Source Map Extension                 |
+| -------------- | --------------------------- | ------------------------------------ |
+| `'cjs'`        | `.d.cts`                    | `.d.cts.map`                         |
+| `'esm'`        | `.d.mts`                    | `.d.mts.map`                         |
+| `undefined`    | Preserve original extension | Preserve corresponding map extension |
+
+When `moduleFormat` is omitted, the plugin preserves TypeScript's declaration extensions: `.ts` → `.d.ts`, `.mts` → `.d.mts`, and `.cts` → `.d.cts`, including declaration maps.
 
 This option is explicit: the plugin does not infer declaration formats from Vite
 `build.lib.formats` or another bundler's JavaScript output formats. When more than one format is
@@ -364,7 +366,7 @@ export interface OutDirConfig {
    * Module format
    * - 'cjs': generates .d.cts files
    * - 'esm': generates .d.mts files
-   * - undefined: generates .d.ts files (default)
+   * - undefined: preserves TypeScript declaration extensions (default)
    */
   moduleFormat?: 'cjs' | 'esm',
 }

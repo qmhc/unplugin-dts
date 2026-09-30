@@ -46,6 +46,8 @@ export default defineConfig({
 
 Supports Vite, Rollup, Rolldown, Webpack, Rspack and Esbuild. See [Usage](./docs/en/usage.md) for detailed bundler setup.
 
+When `moduleFormat` is omitted, the plugin preserves TypeScript's declaration extensions: `.ts` → `.d.ts`, `.mts` → `.d.mts`, and `.cts` → `.d.cts`, including declaration maps.
+
 To publish declarations for both ESM and CommonJS, configure both formats explicitly:
 
 ```ts

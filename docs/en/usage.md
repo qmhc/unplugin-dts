@@ -281,6 +281,8 @@ Bundling follows the entry's public API boundary. A type that is only imported f
 exported declaration can be inlined as a private declaration, but it is not made importable from
 the package entry unless the source entry re-exports it.
 
+When `moduleFormat` is omitted, the plugin preserves TypeScript's declaration extensions: `.ts` → `.d.ts`, `.mts` → `.d.mts`, and `.cts` → `.d.cts`, including declaration maps.
+
 If `outDirs` contains ESM and CommonJS variants, the plugin runs API Extractor once per entry and
 reuses the self-contained result for `.d.mts` and `.d.cts`. This avoids multiplying extraction
 work by the number of formats. Declaration formats must still be configured explicitly with
