@@ -34,6 +34,12 @@ interface Watching {
 
 interface WatchCompiler {
   hooks: {
+    afterCompile: {
+      tap(
+        name: string,
+        callback: (compilation: { missingDependencies: Iterable<string> }) => void
+      ): void,
+    },
     afterDone: {
       tap(name: string, callback: () => void): void,
     },
@@ -85,6 +91,8 @@ describe('native watch ignored merging', () => {
 })
 
 function writeFixture(root: string, include: string, entry: string) {
+  // 阻止 Webpack 向上查找 package.json，避免监听公共临时目录中的无关变更。
+  writeFileSync(resolve(root, 'package.json'), JSON.stringify({ private: true }))
   writeFileSync(
     resolve(root, 'tsconfig.json'),
     JSON.stringify({ compilerOptions: { strict: true }, include: [include] }),
@@ -868,6 +876,12 @@ describe('real watcher regressions', () => {
         ],
       }
       const compiler = createCompiler(config as never) as unknown as WatchCompiler
+
+      compiler.hooks.afterCompile.tap('unplugin-dts-fixture-boundary-test', compilation => {
+        expect([...compilation.missingDependencies].map(normalizePath)).not.toContain(
+          normalizePath(resolve(tempDir, 'package.json')),
+        )
+      })
 
       await runUnsafeRootWatchLifecycle(compiler, projectRoot, outputDirectory, () => runtime)
     },

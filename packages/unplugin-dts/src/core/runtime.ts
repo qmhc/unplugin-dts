@@ -1310,6 +1310,9 @@ export class Runtime {
           const sourceMap: { sources: string[], mappings: string } = JSON.parse(content)
 
           sourceMap.sources = sourceMap.sources.map(source => {
+            // 跨盘源码可能由 TypeScript 表示为文件 URL，不能按相对路径重定位。
+            if (source.startsWith('file:')) return source
+
             return normalizePath(
               relative(
                 dirname(filePath),

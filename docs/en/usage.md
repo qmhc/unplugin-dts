@@ -283,6 +283,8 @@ the package entry unless the source entry re-exports it.
 
 When `moduleFormat` is omitted, the plugin preserves TypeScript's declaration extensions: `.ts` → `.d.ts`, `.mts` → `.d.mts`, and `.cts` → `.d.cts`, including declaration maps.
 
+Declaration maps preserve absolute `file://` source URLs, including Windows cross-drive paths, across all output directories. Relative source paths are adjusted to the destination directory.
+
 If `outDirs` contains ESM and CommonJS variants, the plugin runs API Extractor once per entry and
 reuses the self-contained result for `.d.mts` and `.d.cts`. This avoids multiplying extraction
 work by the number of formats. Declaration formats must still be configured explicitly with

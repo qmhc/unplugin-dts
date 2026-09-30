@@ -1087,6 +1087,45 @@ defineProps<{ msg: ${type} }>()
     expect(content).toContain("export * from './index.js'")
   })
 
+  it('should preserve file URLs in declaration maps across output directories', async () => {
+    tempDir = mkdtempSync(resolvePath(tmpdir(), 'unplugin-dts-'))
+    const sourcePath = resolvePath(tempDir, 'index.ts')
+    writeFileSync(sourcePath, 'export const value = true\n')
+    writeFileSync(resolvePath(tempDir, 'tsconfig.json'), JSON.stringify({ include: ['*.ts'] }))
+    const sources = ['file:///C:/source%20project/index.ts', 'file://server/share/index.ts']
+    const runtime = await Runtime.toInstance({
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      outDirs: [{ dir: 'dist', moduleFormat: 'esm' }, { dir: 'nested/types' }],
+      resolvers: [
+        {
+          name: 'file-url-map',
+          supports: id => id === sourcePath,
+          transform: () => [
+            { path: 'index.d.ts', content: 'export declare const value = true;\n' },
+            {
+              path: 'index.d.ts.map',
+              content: JSON.stringify({
+                version: 3,
+                file: 'index.d.ts',
+                sources,
+                names: [],
+                mappings: '',
+              }),
+            },
+          ],
+        },
+      ],
+    })
+    await runtime.transform(sourcePath, '')
+    await runtime.emitOutput()
+
+    for (const output of ['dist/index.d.mts.map', 'nested/types/index.d.ts.map']) {
+      const map = JSON.parse(readFileSync(resolvePath(tempDir, output), 'utf8'))
+      expect(map.sources).toEqual(sources)
+    }
+  })
+
   it.each(['default', 'explicit-first'] as const)(
     'should preserve native declaration extensions (%s)',
     async outputMode => {
@@ -1142,9 +1181,10 @@ defineProps<{ msg: ${type} }>()
         )
         const map = JSON.parse(readFileSync(resolvePath(nativeDir, `${fileName}.map`), 'utf8'))
         expect(map.file).toBe(fileName)
-        expect(resolvePath(nativeDir, map.sources[0])).toBe(
-          resolvePath(tempDir, `src/${name}.${extension}`),
-        )
+        const sourcePath = map.sources[0].startsWith('file:')
+          ? normalizePath(fileURLToPath(map.sources[0]))
+          : resolvePath(nativeDir, map.sources[0])
+        expect(sourcePath).toBe(resolvePath(tempDir, `src/${name}.${extension}`))
       }
       expect(existsSync(resolvePath(nativeDir, 'index.d.ts'))).toBe(false)
 

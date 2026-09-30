@@ -33,6 +33,8 @@ Supports Vite, Rollup, Rolldown, Webpack, Rspack and Esbuild.
 
 When `moduleFormat` is omitted, the plugin preserves TypeScript's declaration extensions: `.ts` → `.d.ts`, `.mts` → `.d.mts`, and `.cts` → `.d.cts`, including declaration maps.
 
+Declaration maps preserve absolute `file://` source URLs, including Windows cross-drive paths, across all output directories.
+
 For dual ESM/CommonJS declarations, explicitly configure two `outDirs` entries with
 `moduleFormat: 'esm'` and `moduleFormat: 'cjs'`. With `bundleTypes`, each entry is bundled once
 and the self-contained result is reused for both declaration formats. Configure conditional

@@ -455,6 +455,9 @@ export function editSourceMapDir(content: string, fromDir: string, toDir: string
       const sourceMap: { sources: string[] } = JSON.parse(content)
 
       sourceMap.sources = sourceMap.sources.map(source => {
+        // 文件 URL 与输出目录无关，复制声明 map 时保留原值。
+        if (source.startsWith('file:')) return source
+
         return normalizePath(relative(relativeOutDir, source))
       })
 

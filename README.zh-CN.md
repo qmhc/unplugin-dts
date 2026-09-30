@@ -48,6 +48,8 @@ export default defineConfig({
 
 未指定 `moduleFormat` 时，插件保留 TypeScript 的声明后缀：`.ts` → `.d.ts`、`.mts` → `.d.mts`、`.cts` → `.d.cts`，声明 map 也保持对应后缀。
 
+声明 map 中的绝对 `file://` 源文件 URL（包括 Windows 跨盘路径）会在所有输出目录中原样保留。
+
 同时发布 ESM 与 CommonJS 声明时，需要显式配置两种格式：
 
 ```ts

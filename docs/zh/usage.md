@@ -276,6 +276,8 @@ export default defineConfig({
 
 未指定 `moduleFormat` 时，插件保留 TypeScript 的声明后缀：`.ts` → `.d.ts`、`.mts` → `.d.mts`、`.cts` → `.d.cts`，声明 map 也保持对应后缀。
 
+声明 map 中的绝对 `file://` 源文件 URL（包括 Windows 跨盘路径）会在所有输出目录中原样保留；相对源文件路径则按目标目录重新计算。
+
 当 `outDirs` 同时包含 ESM 与 CommonJS 变体时，插件对每个入口只运行一次 API Extractor，
 并将完整结果复用于 `.d.mts` 与 `.d.cts`，不会让提取次数随格式数量增加。声明格式仍需通过
 `moduleFormat` 显式配置；插件不会从 Vite 的 JavaScript formats 推导，也不会替你向

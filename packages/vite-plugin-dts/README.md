@@ -53,6 +53,8 @@ export default defineConfig({
 
 When `moduleFormat` is omitted, the plugin preserves TypeScript's declaration extensions: `.ts` → `.d.ts`, `.mts` → `.d.mts`, and `.cts` → `.d.cts`, including declaration maps.
 
+Declaration maps preserve absolute `file://` source URLs, including Windows cross-drive paths, across all output directories.
+
 When publishing both ESM and CommonJS, explicitly add `outDirs` entries with
 `moduleFormat: 'esm'` and `moduleFormat: 'cjs'`; Vite's JavaScript formats are not inferred.
 Each entry is bundled once and reused for both declaration formats. Configure conditional
