@@ -70,6 +70,14 @@
     "vue-language-core-3-3": "npm:@vue/language-core@3.3.3",
     "webpack": "^5.100.2"
   },
+  "overrides": {
+    "@microsoft/api-extractor": "^7.57.6",
+    "minimatch": "^10.2.4"
+  },
+  "resolutions": {
+    "@microsoft/api-extractor": "^7.57.6",
+    "minimatch": "^10.2.4"
+  },
   "pnpm": {
     "overrides": {
       "@microsoft/api-extractor@<7.57.6": "7.57.6",
