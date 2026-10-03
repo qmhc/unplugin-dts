@@ -37,6 +37,7 @@ import type {
   UnpluginFactory,
   WebpackCompiler,
 } from 'unplugin'
+import type { PluginContext as RollupPluginContext } from 'rollup'
 import type { Alias } from './core'
 import type { PluginOptions } from './types'
 import type { Logger } from './core'
@@ -45,6 +46,9 @@ import type { ProgramChange } from './core/runtime'
 const transformFilterRE = /\.(?:[cm]?[jt]sx?|vue|svelte|json)(?:$|\?)/
 const pluginName = 'unplugin:dts'
 const logPrefix = cyan(`[${pluginName}]`)
+
+// Rollup 系列构建器会传入原生插件上下文，补充 unplugin 类型未包含的 meta。
+type WatchBuildContext = UnpluginBuildContext & Partial<Pick<RollupPluginContext, 'meta'>>
 
 type NativeWatchFileSystem = NonNullable<WebpackCompiler['watchFileSystem']>
 type NativeWatchParameters = Parameters<NativeWatchFileSystem['watch']>
@@ -202,14 +206,13 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
     }
   }
 
-  function getWatchPathAliases(directory: string) {
+  function getWatchPathAliases(directory: string, realRoot: string | undefined) {
     const normalizedDirectory = normalizePath(directory)
     const aliases = new Set([normalizedDirectory])
     const realDirectory = getRealPath(normalizedDirectory)
     if (realDirectory) aliases.add(normalizePath(realDirectory))
 
     if (isPathEqualOrInside(normalizedDirectory, root)) {
-      const realRoot = getRealPath(root)
       if (realRoot) {
         const relativeDirectory = normalizePath(relative(root, normalizedDirectory))
         if (!isAbsolute(relativeDirectory) && !relativeDirectory.startsWith('../')) {
@@ -266,16 +269,20 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
     })
   }
 
-  function addRuntimeWatchTargets(context: UnpluginBuildContext) {
+  function addRuntimeWatchTargets(context: WatchBuildContext) {
     if (meta.framework === 'esbuild') return
+    // 非监听构建跳过监听目标准备，避免逐文件解析真实路径。
+    if (context.meta?.watchMode === false) return
 
+    const realRoot = getRealPath(root)
+    const getAliases = (directory: string) => getWatchPathAliases(directory, realRoot)
     const targets = getRuntimeWatchTargets(runtime, bundlerOutDirs)
     const outputDirectories = [
       ...new Set([...targets.outputDirectories, ...bundlerOutDirs].map(normalizePath)),
     ]
-    const fileAliases = targets.files.map(getWatchPathAliases)
+    const fileAliases = targets.files.map(getAliases)
     const outputTargets = outputDirectories.map(directory => {
-      const aliases = getWatchPathAliases(directory)
+      const aliases = getAliases(directory)
       return {
         directory,
         aliases,
@@ -293,7 +300,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
     }
 
     function canWatchDirectory(directory: string, canIgnoreNestedOutputs: boolean) {
-      const directoryAliases = getWatchPathAliases(directory)
+      const directoryAliases = getAliases(directory)
       return outputTargets.every(outputTarget => {
         if (isAnyPathEqualOrInside(directoryAliases, outputTarget.aliases)) return false
         if (!isAnyPathEqualOrInside(outputTarget.aliases, directoryAliases)) return true
