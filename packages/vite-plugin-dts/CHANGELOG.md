@@ -1,3 +1,11 @@
+## [5.1.2](https://github.com/qmhc/unplugin-dts/compare/v1.0.0-beta.6...v5.1.2) (2026-10-03)
+
+### Bug Fixes
+
+- bump @microsoft/api-extractor to fix security vulnerabilities ([#462](https://github.com/qmhc/unplugin-dts/issues/462)) ([ee2acd5](https://github.com/qmhc/unplugin-dts/commit/ee2acd57dcf059a6f19c1be8f9523040a2071749))
+- preserve declaration graph across module formats ([#491](https://github.com/qmhc/unplugin-dts/issues/491)) ([9c6d284](https://github.com/qmhc/unplugin-dts/commit/9c6d284df0fe1fc25aa31b5fb1b3687bf289da67))
+- preserve native declaration extensions ([6dd5eda](https://github.com/qmhc/unplugin-dts/commit/6dd5edab77958ab06c9ae8d38153760bb88c3235)), closes [#495](https://github.com/qmhc/unplugin-dts/issues/495)
+
 ## [5.1.1](https://github.com/qmhc/unplugin-dts/compare/v1.0.0-beta.7...v5.1.1) (2026-09-20)
 
 ### Bug Fixes
