@@ -47,7 +47,7 @@ const transformFilterRE = /\.(?:[cm]?[jt]sx?|vue|svelte|json)(?:$|\?)/
 const pluginName = 'unplugin:dts'
 const logPrefix = cyan(`[${pluginName}]`)
 
-// Rollup-family bundlers pass their native plugin context, which unplugin's type omits
+// Rollup 系列构建器会传入原生插件上下文，补充 unplugin 类型未包含的 meta。
 type WatchBuildContext = UnpluginBuildContext & Partial<Pick<RollupPluginContext, 'meta'>>
 
 type NativeWatchFileSystem = NonNullable<WebpackCompiler['watchFileSystem']>
@@ -271,7 +271,7 @@ export const pluginFactory: UnpluginFactory<PluginOptions | undefined, false> = 
 
   function addRuntimeWatchTargets(context: WatchBuildContext) {
     if (meta.framework === 'esbuild') return
-    // A one-shot build never reads these targets, and resolving them costs a stat and realpath per program file
+    // 非监听构建跳过监听目标准备，避免逐文件解析真实路径。
     if (context.meta?.watchMode === false) return
 
     const realRoot = getRealPath(root)
