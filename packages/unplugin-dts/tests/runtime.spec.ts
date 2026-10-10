@@ -660,6 +660,56 @@ defineProps<{ msg: ${type} }>()
     expect(diagnosticCodes).not.toContain(2322)
   })
 
+  it('should probe each path once while creating a Program', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    mkdirSync(resolve(tempDir, 'src/nested'), { recursive: true })
+    writeFileSync(resolve(tempDir, 'tsconfig.json'), JSON.stringify({ include: ['src/**/*'] }))
+    writeFileSync(resolve(tempDir, 'src/index.ts'), "export * from './nested/a'\n")
+    writeFileSync(resolve(tempDir, 'src/nested/a.ts'), 'export const a = 1\n')
+
+    const probed: string[] = []
+    const { fileExists, directoryExists } = ts.sys
+    vi.spyOn(ts.sys, 'fileExists').mockImplementation(path => (probed.push(path), fileExists(path)))
+    vi.spyOn(ts.sys, 'directoryExists').mockImplementation(
+      path => (probed.push(path), directoryExists(path)),
+    )
+    try {
+      await Runtime.toInstance({ processor: 'ts', root: tempDir, tsconfigPath: 'tsconfig.json' })
+    } finally {
+      vi.restoreAllMocks()
+    }
+
+    const inProject = probed.filter(path => path.startsWith(normalizePath(tempDir)))
+    expect(inProject).toEqual([...new Set(inProject)])
+  })
+
+  it('should resolve modules created after the previous Program on incremental rebuilds', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    const indexPath = resolve(tempDir, 'index.ts')
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { strict: true, module: 'esnext', moduleResolution: 'bundler' },
+        include: ['*.ts'],
+      }),
+    )
+    writeFileSync(indexPath, "export { value } from './later'\n")
+
+    const runtime = await Runtime.toInstance({
+      processor: 'ts',
+      root: tempDir,
+      tsconfigPath: 'tsconfig.json',
+      logger: { info() {}, warn() {}, error() {} },
+    })
+    expect(runtime.getDiagnostics().map(diagnostic => diagnostic.code)).toContain(2307)
+
+    writeFileSync(resolve(tempDir, 'later.ts'), 'export const value = 1\n')
+    writeFileSync(indexPath, "export { value } from './later'\n// updated\n")
+    rebuildRuntimeProgram(runtime, { fileName: indexPath, event: 'update' })
+
+    expect(runtime.getDiagnostics()).toEqual([])
+  })
+
   it('should use fresh fallback for root-set and tsconfig changes', async () => {
     tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
     mkdirSync(resolve(tempDir, 'src'))
