@@ -34,30 +34,46 @@ export default defineConfig({
       entry: resolve(__dirname, 'src/index.ts'),
       name: 'MyLib',
       formats: ['es'],
-      fileName: 'my-lib'
-    }
+      fileName: 'my-lib',
+    },
   },
-  plugins: [dts()]
+  plugins: [dts()],
 })
 ```
 
 By default, the generated declaration files are following the source structure.
 
-Fortunately, with the help of [API Extractor](https://api-extractor.com/), the plugin can bundle all types into a single file. You just need to install `@microsoft/api-extractor` and set `bundleTypes: true`:
+Fortunately, with the help of [API Extractor](https://api-extractor.com/), the plugin can bundle all types into a single file. You just need to install `@microsoft/api-extractor` version **7.57.7 or later** and set `bundleTypes: true`:
+
+Existing projects should update their API Extractor dependency and lockfile; repository-level
+overrides do not apply to projects installing this plugin.
 
 ```ts
-{
-  plugins: [dts({ bundleTypes: true })]
-}
+export default defineConfig({
+  plugins: [dts({ bundleTypes: true })],
+})
 ```
+
+When `moduleFormat` is omitted, the plugin preserves TypeScript's declaration extensions: `.ts` → `.d.ts`, `.mts` → `.d.mts`, and `.cts` → `.d.cts`, including declaration maps.
+
+Declaration maps preserve absolute `file://` source URLs, including Windows cross-drive paths, across all output directories.
+
+When publishing both ESM and CommonJS, explicitly add `outDirs` entries with
+`moduleFormat: 'esm'` and `moduleFormat: 'cjs'`; Vite's JavaScript formats are not inferred.
+Each entry is bundled once and reused for both declaration formats. Configure conditional
+`exports.types` entries separately in `package.json`.
 
 If you start with official Vite template, you should specify the `tsconfigPath`:
 
 ```ts
-{
-  plugins: [dts({ tsconfigPath: './tsconfig.app.json' })]
-}
+export default defineConfig({
+  plugins: [dts({ tsconfigPath: './tsconfig.app.json' })],
+})
 ```
+
+## Documentation
+
+For full documentation, please refer to [unplugin-dts](../../docs/en/usage.md).
 
 ## Example
 

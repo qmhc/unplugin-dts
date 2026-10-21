@@ -10,12 +10,12 @@ import {
 import { existsSync, lstatSync, readdirSync, rmdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 
-import ts from 'typescript'
+import ts from './ts-loader.cjs'
 import debug from 'debug'
 import { getPackageInfoSync, resolveModule } from 'local-pkg'
 
 import type { CompilerOptions } from 'typescript'
-import type { Alias } from 'vite'
+import type { Alias } from './types'
 import type { ModuleFormat, NormalizedOutDir, OutDirConfig, OutDirsOption } from './types'
 
 export type MaybePromise<T> = T | Promise<T>
@@ -32,6 +32,7 @@ export const jsRE = /\.([cm])?jsx?$/
 export const tsRE = /\.([cm])?tsx?$/
 export const dtsRE = /\.d\.([cm])?tsx?$/
 export const tjsRE = /\.([cm])?([jt])sx?$/
+// e.g. .ts .tsx .js .jsx .mts .mjs .cts .cjs
 export const mtjsRE = /\.m([jt])sx?$/
 export const ctjsRE = /\.c([jt])sx?$/
 export const fullRelativeRE = /^\.\.?\//
@@ -50,14 +51,14 @@ export function tsToDts(path: string) {
  * 将 TypeScript 文件路径转换为指定后缀的声明文件路径
  *
  * @param path - TypeScript 文件路径
- * @param dtsExtension - 目标声明文件后缀
+ * @param dtsExtension - 目标声明文件后缀；未指定时根据源文件推导
  * @returns 转换后的声明文件路径
  */
 export function tsToDtsWithExtension(
   path: string,
-  dtsExtension: '.d.ts' | '.d.cts' | '.d.mts' = '.d.ts',
+  dtsExtension: '.d.ts' | '.d.cts' | '.d.mts' = `.d.${getJsExtPrefix(path)}ts`,
 ): string {
-  return `${path.replace(tsRE, '')}${dtsExtension}`
+  return `${path.replace(tjsRE, '')}${dtsExtension}`
 }
 
 const windowsSlashRE = /\\+/g
@@ -415,7 +416,7 @@ export function setModuleResolution(options: CompilerOptions) {
   const module =
     typeof options.module === 'number'
       ? options.module
-      : (options.target ?? ts.ScriptTarget.ES5 >= 2)
+      : (options.target ?? ts.ScriptTarget.ES5) >= ts.ScriptTarget.ES2015
         ? ts.ModuleKind.ES2015
         : ts.ModuleKind.CommonJS
 
@@ -432,13 +433,18 @@ export function setModuleResolution(options: CompilerOptions) {
       moduleResolution = ts.ModuleResolutionKind.NodeNext
       break
     default:
-      moduleResolution = ts.version.startsWith('5')
-        ? ts.ModuleResolutionKind.Bundler
-        : ts.ModuleResolutionKind.Classic
+      moduleResolution = resolveESModuleResolution(ts.ModuleResolutionKind)
       break
   }
 
   options.moduleResolution = moduleResolution
+}
+
+export function resolveESModuleResolution(moduleResolutionKind: {
+  Classic: ts.ModuleResolutionKind,
+  Bundler?: ts.ModuleResolutionKind,
+}) {
+  return moduleResolutionKind.Bundler ?? moduleResolutionKind.Classic
 }
 
 export function editSourceMapDir(content: string, fromDir: string, toDir: string) {
@@ -449,6 +455,9 @@ export function editSourceMapDir(content: string, fromDir: string, toDir: string
       const sourceMap: { sources: string[] } = JSON.parse(content)
 
       sourceMap.sources = sourceMap.sources.map(source => {
+        // 文件 URL 与输出目录无关，复制声明 map 时保留原值。
+        if (source.startsWith('file:')) return source
+
         return normalizePath(relative(relativeOutDir, source))
       })
 
@@ -552,14 +561,14 @@ export function tryGetPackageInfo(name: string) {
  */
 export function getDtsExtension(
   moduleFormat: ModuleFormat | undefined,
-): '.d.ts' | '.d.cts' | '.d.mts' {
+): NormalizedOutDir['dtsExtension'] {
   switch (moduleFormat) {
     case 'cjs':
       return '.d.cts'
     case 'esm':
       return '.d.mts'
     default:
-      return '.d.ts'
+      return undefined
   }
 }
 
@@ -571,14 +580,14 @@ export function getDtsExtension(
  */
 export function getMapExtension(
   moduleFormat: ModuleFormat | undefined,
-): '.d.ts.map' | '.d.cts.map' | '.d.mts.map' {
+): NormalizedOutDir['mapExtension'] {
   switch (moduleFormat) {
     case 'cjs':
       return '.d.cts.map'
     case 'esm':
       return '.d.mts.map'
     default:
-      return '.d.ts.map'
+      return undefined
   }
 }
 
@@ -597,8 +606,8 @@ function normalizeOutDirItem(item: string | OutDirConfig, root: string): Normali
     return {
       dir: ensureAbsolute(item, root),
       moduleFormat: undefined,
-      dtsExtension: '.d.ts',
-      mapExtension: '.d.ts.map',
+      dtsExtension: undefined,
+      mapExtension: undefined,
     }
   }
 
@@ -656,33 +665,33 @@ export function normalizeOutDirs(
 /**
  * 转换文件路径的后缀
  *
- * 将 .d.ts 路径转换为目标后缀（.d.cts 或 .d.mts）
+ * 在 .d.ts、.d.cts 和 .d.mts 之间转换路径后缀。
  *
  * @param filePath - 原始文件路径
- * @param targetExtension - 目标后缀
+ * @param targetExtension - 目标后缀；未指定时保留原始后缀
  * @returns 转换后的文件路径
  */
 export function transformDtsPath(
   filePath: string,
-  targetExtension: '.d.ts' | '.d.cts' | '.d.mts',
+  targetExtension: NormalizedOutDir['dtsExtension'],
 ): string {
-  // 如果目标后缀是 .d.ts，无需转换
-  if (targetExtension === '.d.ts') {
-    return filePath
-  }
+  if (!targetExtension) return filePath
 
-  // 处理 .d.ts.map 文件
-  if (filePath.endsWith('.d.ts.map')) {
+  const declarationMapRE = /\.d\.(?:[cm])?ts\.map$/
+  const declarationRE = /\.d\.(?:[cm])?ts$/
+
+  if (declarationMapRE.test(filePath)) {
     const mapExtension = targetExtension === '.d.cts' ? '.d.cts.map' : '.d.mts.map'
-    return filePath.slice(0, -9) + mapExtension
+    return filePath.replace(
+      declarationMapRE,
+      targetExtension === '.d.ts' ? '.d.ts.map' : mapExtension,
+    )
   }
 
-  // 处理 .d.ts 文件
-  if (filePath.endsWith('.d.ts')) {
-    return filePath.slice(0, -5) + targetExtension
+  if (declarationRE.test(filePath)) {
+    return filePath.replace(declarationRE, targetExtension)
   }
 
-  // 其他情况返回原路径
   return filePath
 }
 
@@ -707,7 +716,7 @@ export function cleanVueDtsFileName(filePath: string): string {
 /**
  * 转换声明文件内容中的 sourceMappingURL 注释后缀
  *
- * 将 `//# sourceMappingURL=xxx.d.ts.map` 转换为对应的后缀
+ * 将 `//# sourceMappingURL=xxx.d.[cm]?ts.map` 转换为对应的后缀。
  *
  * @param content - 声明文件内容
  * @param targetMapExtension - 目标 source map 后缀
@@ -717,15 +726,8 @@ export function transformSourceMappingURL(
   content: string,
   targetMapExtension: '.d.ts.map' | '.d.cts.map' | '.d.mts.map',
 ): string {
-  // 如果目标后缀是 .d.ts.map，无需转换
-  if (targetMapExtension === '.d.ts.map') {
-    return content
-  }
-
-  // 匹配 sourceMappingURL 注释中的 .d.ts.map 后缀
-  // 格式: //# sourceMappingURL=filename.d.ts.map
   return content.replace(
-    /\/\/# sourceMappingURL=(.+)\.d\.ts\.map$/m,
+    /\/\/# sourceMappingURL=(.+)\.d\.(?:[cm])?ts\.map$/m,
     `//# sourceMappingURL=$1${targetMapExtension}`,
   )
 }

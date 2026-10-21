@@ -3,6 +3,7 @@ export * from './resolvers'
 export * from './utils'
 
 export type {
+  Alias,
   AliasOptions,
   BundleConfig as RollupConfig,
   CreateRuntimeOptions,

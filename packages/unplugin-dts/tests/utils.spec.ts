@@ -2,6 +2,7 @@ import { normalize, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
+import ts from '../src/core/ts-loader.cjs'
 import {
   base64VLQEncode,
   ensureAbsolute,
@@ -18,6 +19,8 @@ import {
   parseTsAliases,
   queryPublicPath,
   resolveConfigDir,
+  resolveESModuleResolution,
+  setModuleResolution,
   toCapitalCase,
   transformDtsPath,
   transformSourceMappingURL,
@@ -273,7 +276,7 @@ describe('utils tests', () => {
     // 测试 esm 格式
     expect(getDtsExtension('esm')).toBe('.d.mts')
     // 测试 undefined（默认）
-    expect(getDtsExtension(undefined)).toBe('.d.ts')
+    expect(getDtsExtension(undefined)).toBeUndefined()
   })
 
   it('test: getMapExtension', () => {
@@ -282,7 +285,7 @@ describe('utils tests', () => {
     // 测试 esm 格式
     expect(getMapExtension('esm')).toBe('.d.mts.map')
     // 测试 undefined（默认）
-    expect(getMapExtension(undefined)).toBe('.d.ts.map')
+    expect(getMapExtension(undefined)).toBeUndefined()
   })
 
   it('test: normalizeOutDirs', () => {
@@ -297,8 +300,8 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, defaultDir),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
     ])
 
@@ -307,8 +310,8 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, 'types'),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
     ])
 
@@ -317,14 +320,14 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, 'dist'),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
       {
         dir: expectedDir(root, 'types'),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
     ])
 
@@ -378,8 +381,8 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, 'dist'),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
       {
         dir: expectedDir(root, 'dist-cjs'),
@@ -400,8 +403,8 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, defaultDir),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
     ])
 
@@ -410,8 +413,8 @@ describe('utils tests', () => {
       {
         dir: expectedDir(root, 'types'),
         moduleFormat: undefined,
-        dtsExtension: '.d.ts',
-        mapExtension: '.d.ts.map',
+        dtsExtension: undefined,
+        mapExtension: undefined,
       },
     ])
   })
@@ -434,6 +437,12 @@ describe('utils tests', () => {
     )
     // 测试 .d.ts.map 文件保持不变
     expect(transformDtsPath('/project/dist/index.d.ts.map', '.d.ts')).toBe(
+      '/project/dist/index.d.ts.map',
+    )
+    expect(transformDtsPath('/project/dist/index.d.mts', '.d.cts')).toBe(
+      '/project/dist/index.d.cts',
+    )
+    expect(transformDtsPath('/project/dist/index.d.cts.map', '.d.ts')).toBe(
       '/project/dist/index.d.ts.map',
     )
 
@@ -460,6 +469,9 @@ describe('utils tests', () => {
 
     // 测试保持 .d.ts.map 不变
     expect(transformSourceMappingURL(contentWithSourceMap, '.d.ts.map')).toBe(contentWithSourceMap)
+    expect(transformSourceMappingURL('//# sourceMappingURL=index.d.mts.map', '.d.cts.map')).toBe(
+      '//# sourceMappingURL=index.d.cts.map',
+    )
 
     // 测试没有 sourceMappingURL 的内容
     const contentWithoutSourceMap = `export declare const foo: string;`
@@ -490,5 +502,35 @@ export interface Test {
 export { testFn } from './comment';
 //# sourceMappingURL=index.d.cts.map`,
     )
+  })
+})
+
+describe('setModuleResolution', () => {
+  it('keeps an explicit moduleResolution', () => {
+    const options: ts.CompilerOptions = {
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    }
+    setModuleResolution(options)
+    expect(options.moduleResolution).toBe(ts.ModuleResolutionKind.NodeNext)
+  })
+
+  it('maps an ES5 target to CommonJS module resolution (Node10)', () => {
+    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES5 }
+    setModuleResolution(options)
+    expect(options.moduleResolution).toBe(ts.ModuleResolutionKind.Node10)
+  })
+
+  it('maps an ES2015+ target to ES2015 module resolution', () => {
+    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2020 }
+    setModuleResolution(options)
+    expect(options.moduleResolution).toBe(ts.ModuleResolutionKind.Bundler)
+  })
+
+  it('uses Classic when the TypeScript API does not expose Bundler', () => {
+    expect(
+      resolveESModuleResolution({
+        Classic: ts.ModuleResolutionKind.Classic,
+      }),
+    ).toBe(ts.ModuleResolutionKind.Classic)
   })
 })

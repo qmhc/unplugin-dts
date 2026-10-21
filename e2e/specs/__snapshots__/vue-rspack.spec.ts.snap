@@ -1,0 +1,358 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`vue-rspack > should match snapshot for dist/index.d.ts 1`] = `
+"import { ComponentOptionsMixin } from 'vue';
+import { ComponentProvideOptions } from 'vue';
+import { ComputedRef } from 'vue';
+import { DefineComponent } from 'vue';
+import { ExtractPropTypes } from 'vue';
+import { JSX } from 'vue/jsx-runtime';
+import { PropType } from 'vue';
+import { PublicProps } from 'vue';
+import { Ref } from 'vue';
+import { VNode } from 'vue';
+
+declare const __VLS_export: DefineComponent<ExtractPropTypes<{
+    msg: {
+        type: StringConstructor;
+        default: string;
+    };
+}>, {
+    count: Ref<number, number>;
+}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly< ExtractPropTypes<{
+    msg: {
+        type: StringConstructor;
+        default: string;
+    };
+}>> & Readonly<{}>, {
+    msg: string;
+}, {}, {
+    HelloWorld: DefineComponent<ExtractPropTypes<{
+        msg: {
+            type: StringConstructor;
+            validator: (value: string) => boolean;
+            default: string;
+        };
+    }>, {
+        count: Ref<number, number>;
+        labelMsg: ComputedRef<string>;
+    }, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly< ExtractPropTypes<{
+        msg: {
+            type: StringConstructor;
+            validator: (value: string) => boolean;
+            default: string;
+        };
+    }>> & Readonly<{}>, {
+        msg: string;
+    }, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+declare const __VLS_export_10: DefineComponent<{}, () => JSX.Element, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+declare const __VLS_export_11: DefineComponent<ExtractPropTypes<{
+    msg: {
+        type: StringConstructor;
+        default: string;
+    };
+}>, () => JSX.Element, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly< ExtractPropTypes<{
+    msg: {
+        type: StringConstructor;
+        default: string;
+    };
+}>> & Readonly<{}>, {
+    msg: string;
+}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+declare const __VLS_export_12: DefineComponent<{}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+declare const __VLS_export_13: DefineComponent<__VLS_Props, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly<__VLS_Props> & Readonly<{}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+
+declare const __VLS_export_14: DefineComponent<ExtractPropTypes<{
+    title: {
+        type: StringConstructor;
+        default: string;
+    };
+}>, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly< ExtractPropTypes<{
+    title: {
+        type: StringConstructor;
+        default: string;
+    };
+}>> & Readonly<{}>, {
+    title: string;
+}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+declare const __VLS_export_15: DefineComponent<Props_2, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly<Props_2> & Readonly<{}>, {
+    msg: string;
+}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+
+declare const __VLS_export_2: DefineComponent<{}, {
+    count: Ref<number, number>;
+}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+declare const __VLS_export_3: DefineComponent<ExtractPropTypes<{
+    foo: {
+        type: StringConstructor;
+        default: string;
+    };
+}>, {
+    baz: Ref<number, number>;
+}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly< ExtractPropTypes<{
+    foo: {
+        type: StringConstructor;
+        default: string;
+    };
+}>> & Readonly<{}>, {
+    foo: string;
+}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+declare const __VLS_export_4: DefineComponent<ExtractPropTypes<{
+    max: {
+        type: NumberConstructor;
+        default: number;
+    };
+    count: {
+        type: PropType<number>;
+    };
+}>, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly< ExtractPropTypes<{
+    max: {
+        type: NumberConstructor;
+        default: number;
+    };
+    count: {
+        type: PropType<number>;
+    };
+}>> & Readonly<{}>, {
+    max: number;
+}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+declare const __VLS_export_5: DefineComponent<{}, {
+    inc: () => void;
+    $emit: typeof emit;
+    $props: Partial<typeof props>;
+    count: number;
+}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+declare const __VLS_export_6: DefineComponent<Props, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+    cellClick: (evt: string) => any;
+    dragSelectUpdate: (values: number[]) => any;
+    headerClick: (column: unknown) => any;
+}, string, PublicProps, Readonly<Props> & Readonly<{
+    onCellClick?: ((evt: string) => any) | undefined;
+    onDragSelectUpdate?: ((values: number[]) => any) | undefined;
+    onHeaderClick?: ((column: unknown) => any) | undefined;
+}>, {
+    array: {
+        foo: number;
+    }[];
+}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+
+declare const __VLS_export_7: <T extends {
+    label: string;
+}>(__VLS_props: NonNullable<Awaited<typeof __VLS_setup>>["props"], __VLS_ctx?: __VLS_PrettifyLocal<Pick<NonNullable<Awaited<typeof __VLS_setup>>, "attrs" | "emit" | "slots">>, __VLS_expose?: NonNullable<Awaited<typeof __VLS_setup>>["expose"], __VLS_setup?: Promise<{
+    props: __VLS_PrettifyLocal<{
+        item: T;
+    } & {}> & PublicProps & (typeof globalThis extends {
+        __VLS_PROPS_FALLBACK: infer P;
+    } ? P : {});
+    expose: (exposed: {}) => void;
+    attrs: any;
+    slots: {};
+    emit: (evt: "select", node: T) => void;
+}>) => VNode & {
+    __ctx?: Awaited<typeof __VLS_setup>;
+};
+
+declare const __VLS_export_8: __VLS_WithSlots< DefineComponent<ExtractPropTypes<{
+    tag: {
+        type: StringConstructor;
+        default: string;
+    };
+    count: {
+        type: NumberConstructor;
+        default: number;
+    };
+}>, {
+    inc: () => void;
+}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, any, string, PublicProps, any, {
+    count: number;
+    tag: string;
+}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>, {
+    default?: (props: {}) => any;
+}>;
+
+declare const __VLS_export_9: DefineComponent<{}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+declare type __VLS_PrettifyLocal<T> = {
+    [K in keyof T as K]: T[K];
+} & {};
+
+declare type __VLS_Props = {
+    msg: string | undefined;
+};
+
+declare type __VLS_WithSlots<T, S> = T & {
+    new (): {
+        $slots: S;
+    };
+};
+
+export declare interface AliasType {
+    count: number;
+    name: string;
+}
+
+declare type BaseProps = {
+    title: string;
+};
+
+export declare const BothScripts: typeof __VLS_export_8;
+
+export declare const CssVar: typeof __VLS_export_13;
+
+export declare class Decorator {
+    method(): void;
+}
+
+declare const _default: typeof __VLS_export;
+export { _default as DefaultImport }
+export default _default;
+
+export declare type DtsType = string | number
+
+declare const emit: (event: "on-add", ...args: any[]) => void;
+
+export declare const GenericProps: typeof __VLS_export_7;
+
+export declare const JsSetup: typeof __VLS_export_5;
+
+export declare const JsTest: typeof __VLS_export_2;
+
+export declare const JsxLangTest: typeof __VLS_export_10;
+
+export declare const JsxTest: DefineComponent<ExtractPropTypes<{
+    msg: {
+        type: StringConstructor;
+        default: string;
+    };
+}>, () => JSX.Element, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly< ExtractPropTypes<{
+    msg: {
+        type: StringConstructor;
+        default: string;
+    };
+}>> & Readonly<{}>, {
+    msg: string;
+}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+export declare const MinimalSetup: typeof __VLS_export_9;
+
+export declare const NoDirectExport: typeof __VLS_export_3;
+
+export declare const NoScript: typeof __VLS_export_12;
+
+export declare const OutsideProps: typeof __VLS_export_14;
+
+export declare const OutsideTsProps: typeof __VLS_export_15;
+
+declare type Props = {
+    color: 'blue' | 'red' | 'purple' | 'yellow';
+    array?: {
+        foo: number;
+    }[];
+};
+
+declare const props: {
+    readonly count: number;
+};
+
+declare type Props_2 = {
+    title: BaseProps['title'];
+    msg?: string;
+};
+
+export declare const Setup: typeof __VLS_export_4;
+
+export declare const TsxLangTest: typeof __VLS_export_11;
+
+export declare const TsxTest: DefineComponent<ExtractPropTypes<{
+    msg: {
+        type: StringConstructor;
+        default: string;
+    };
+}>, () => JSX.Element, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly< ExtractPropTypes<{
+    msg: {
+        type: StringConstructor;
+        default: string;
+    };
+}>> & Readonly<{}>, {
+    msg: string;
+}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+export declare const TypeProps: typeof __VLS_export_6;
+
+export declare interface User {
+    id: string;
+    name: string;
+}
+
+export declare const user: User;
+
+export { }
+
+declare module 'vue' {
+    type TestModule = {
+        newField: string;
+    };
+}
+"
+`;
+
+exports[`vue-rspack > should match snapshot for dist/main.d.ts 1`] = `
+"import { ComponentOptionsMixin } from 'vue';
+import { ComponentProvideOptions } from 'vue';
+import { DefineComponent } from 'vue';
+import { ExtractPropTypes } from 'vue';
+import { PropType } from 'vue';
+import { PublicProps } from 'vue';
+
+declare const __VLS_export: DefineComponent<ExtractPropTypes<{
+    max: {
+        type: NumberConstructor;
+        default: number;
+    };
+    count: {
+        type: PropType<number>;
+    };
+}>, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly< ExtractPropTypes<{
+    max: {
+        type: NumberConstructor;
+        default: number;
+    };
+    count: {
+        type: PropType<number>;
+    };
+}>> & Readonly<{}>, {
+    max: number;
+}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
+
+export declare class Decorator {
+    method(): void;
+}
+
+export declare type DtsType = string | number
+
+export declare const Setup: typeof __VLS_export;
+
+export declare interface User {
+    id: string;
+    name: string;
+}
+
+export { }
+
+declare module 'vue' {
+    type TestModule = {
+        newField: string;
+    };
+}
+"
+`;

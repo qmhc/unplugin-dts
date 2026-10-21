@@ -1,0 +1,11 @@
+types/
+dist/
+tsc-dist/
+node_modules/
+components/*.d.ts
+docs/
+
+# Rolldown may emit inlined plugin chunks to the project root
+ts-*.js
+vue-*.js
+unplugin-dts.*.js

@@ -1,15 +1,23 @@
-import { basename, dirname, relative } from 'node:path'
+import { basename, dirname, extname, relative } from 'node:path'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
-import { cpus } from 'node:os'
+import { availableParallelism } from 'node:os'
 
-import ts from 'typescript'
+import ts from './ts-loader.cjs'
 import { createFilter } from '@rollup/pluginutils'
-import { green, red, yellow } from 'kolorist'
+import { compare } from 'compare-versions'
+import { green, yellow } from 'kolorist'
 import { loadProgramProcessor } from './processor'
+import { createApiExtractorProvider, getHasExtractor, normalizeProvider } from './providers'
 import { JsonResolver, SvelteResolver, VueResolver, parseResolvers } from './resolvers'
-import { hasExportDefault, hasNormalExport, normalizeGlob, transformCode } from './transform'
-import { bundleDtsFiles, getHasExtractor } from './bundle'
+import {
+  collectRelativeModuleSpecifiers,
+  hasExportDefault,
+  hasNormalExport,
+  normalizeGlob,
+  transformCode,
+  transformModuleSpecifiers,
+} from './transform'
 import {
   cleanVueDtsFileName,
   defaultIndex,
@@ -45,16 +53,19 @@ import {
   unwrapPromise,
 } from './utils'
 
-import type { Alias } from 'vite'
-import type { ProgramProcessor } from './processor'
+import type { Alias } from './types'
+import type { ProgramProcessor, SourceFileCacheStats, VersionedCompilerHost } from './processor'
 import type { Resolver } from './resolvers'
 import type {
   AliasOptions,
   CreateRuntimeOptions,
   EmitOptions,
+  ExtractorResult,
   Logger,
   NormalizedOutDir,
 } from './types'
+
+const maxConcurrency = availableParallelism()
 
 const fixedCompilerOptions: ts.CompilerOptions = {
   noEmit: false,
@@ -65,6 +76,107 @@ const fixedCompilerOptions: ts.CompilerOptions = {
   preserveSymlinks: false,
   noEmitOnError: undefined,
   target: ts.ScriptTarget.ESNext,
+}
+
+export interface ProgramChange {
+  fileName?: string,
+  event?: 'create' | 'update' | 'delete',
+  forceFresh?: boolean,
+}
+
+export interface RuntimeWatchTargets {
+  files: string[],
+  directories: string[],
+  contextDirectories: string[],
+  outputDirectories: string[],
+}
+
+export function isCanonicalPathEqualOrInside(
+  canonicalFileName: string,
+  canonicalDirectory: string,
+) {
+  const directoryPrefix = canonicalDirectory.endsWith('/')
+    ? canonicalDirectory
+    : `${canonicalDirectory}/`
+  return canonicalFileName === canonicalDirectory || canonicalFileName.startsWith(directoryPrefix)
+}
+
+interface ProgramReuseStats {
+  mode: 'fresh' | 'incremental',
+  reason: string,
+  sourceFiles: number,
+  reusedSourceFiles: number,
+  nonDefaultSourceFiles: number,
+  reusedNonDefaultSourceFiles: number,
+  cacheHits: number,
+  cacheMisses: number,
+  cacheInvalidations: number,
+  cacheEntries: number,
+}
+
+function isVersionedCompilerHost(host: ts.CompilerHost): host is VersionedCompilerHost {
+  const candidate = host as Partial<VersionedCompilerHost>
+  return (
+    typeof candidate.invalidateSourceFile === 'function' &&
+    typeof candidate.getSourceFileCacheStats === 'function'
+  )
+}
+
+function getDiagnostics(program: ts.Program) {
+  return [
+    ...program.getDeclarationDiagnostics(),
+    ...program.getSemanticDiagnostics(),
+    ...program.getSyntacticDiagnostics(),
+  ]
+}
+
+interface RuntimeInternals {
+  runtimeOptions: CreateRuntimeOptions,
+  programProcessor: ProgramProcessor,
+  projectReferences: readonly ts.ProjectReference[] | undefined,
+  configWatchDirectories: string[],
+  emittedFilePaths: Set<string>,
+  cleanStaleOutputs: boolean,
+  lastProgramReuse: ProgramReuseStats,
+  rebuildProgramIncremental: (changes: readonly ProgramChange[]) => string[],
+  isConfigFile: (fileName: string) => boolean,
+  shouldHandleWatchChange: (fileName: string) => boolean,
+  getWatchTargets: () => RuntimeWatchTargets,
+  filterWatchDirectories: (
+    directories: readonly string[],
+    outputDirectories: readonly string[]
+  ) => string[],
+  isWatchDirectory: (fileName: string) => boolean,
+}
+
+const runtimeInternals = new WeakMap<Runtime, RuntimeInternals>()
+
+function getRuntimeInternals(runtime: Runtime) {
+  const internals = runtimeInternals.get(runtime)
+  if (!internals) throw new Error('Runtime is not initialized')
+  return internals
+}
+
+function shouldMeasureProgramReuse() {
+  return handleDebug.enabled
+}
+
+function isEmptyDeclarationEntry(content: string | undefined) {
+  if (!content?.trim()) return true
+
+  const sourceFile = ts.createSourceFile('entry.d.ts', content, ts.ScriptTarget.Latest)
+
+  return sourceFile.statements.every(statement => {
+    if (ts.isEmptyStatement(statement)) return true
+
+    return (
+      ts.isExportDeclaration(statement) &&
+      !statement.moduleSpecifier &&
+      !!statement.exportClause &&
+      ts.isNamedExports(statement.exportClause) &&
+      statement.exportClause.elements.length === 0
+    )
+  })
 }
 
 function parseAliases(aliasOptions: AliasOptions = [], aliasesExclude: (string | RegExp)[] = []) {
@@ -98,7 +210,9 @@ function parseAliases(aliasOptions: AliasOptions = [], aliasesExclude: (string |
 
 export class Runtime {
   static async toInstance({ processor = 'ts', ...options }: CreateRuntimeOptions) {
-    return new Runtime(options, await loadProgramProcessor(processor))
+    const mod = await loadProgramProcessor(processor)
+    const api = (mod as any).default ?? mod
+    return new Runtime(options, api)
   }
 
   protected root: string
@@ -120,19 +234,20 @@ export class Runtime {
   protected libName: string
   protected indexName: string
   protected logger: Logger
-
   protected resolvers: Resolver[]
   protected rootFiles: Set<string>
   protected outputFiles: Map<string, string>
   protected transformedFiles: Set<string>
 
+  private programSourceFilesByCanonicalName: Map<string, ts.SourceFile> | undefined
+  private watchDirectoryNames: Set<string> | undefined
+  private watchTargets: RuntimeWatchTargets | undefined
+
   readonly filter: (id: string) => boolean
   readonly rebuildProgram: () => void
 
-  protected constructor(
-    options: CreateRuntimeOptions,
-    { createParsedCommandLine, createProgram }: ProgramProcessor,
-  ) {
+  protected constructor(options: CreateRuntimeOptions, programProcessor: ProgramProcessor) {
+    const { createCompilerHost, createParsedCommandLine, createProgram } = programProcessor
     const {
       root,
       tsconfigPath,
@@ -166,10 +281,14 @@ export class Runtime {
     }
     const rawCompilerOptions = content?.raw.compilerOptions || {}
 
-    if (content?.fileNames.find(name => name.endsWith('.vue'))) {
+    if (
+      programProcessor.needsModuleResolutionFallback ||
+      content?.fileNames.find(name => name.endsWith('.vue'))
+    ) {
       // (#277) A patch for Vue
-      // If user don't specify `moduleResolution` in top config file,
-      // declaration of Vue files will be inferred to `any` type.
+      // If user doesn't specify `moduleResolution` in the top config file,
+      // declarations of Vue files can be inferred as `any`, including Vue files
+      // that are reached only through TypeScript roots.
       setModuleResolution(compilerOptions)
     }
 
@@ -182,18 +301,19 @@ export class Runtime {
 
     const outDirs = normalizeOutDirs(options.outDirs, root, defaultOutDir)
 
-    const {
-      // Here we are using the default value to set the `baseUrl` to the current directory if no value exists. This is
-      // the same behavior as the TS Compiler. See TS source:
-      // https://github.com/microsoft/TypeScript/blob/3386e943215613c40f68ba0b108cda1ddb7faee1/src/compiler/utilities.ts#L6493-L6501
-      baseUrl = compilerOptions.paths ? process.cwd() : undefined,
-      paths,
-    } = compilerOptions
+    const { baseUrl, paths } = compilerOptions
 
-    if (pathsToAliases && baseUrl && paths) {
+    // When `paths` is used without `baseUrl` in tsconfig.json, TypeScript 5.4+
+    // resolves paths relative to the containing directory of tsconfig.json.
+    const resolvedBaseUrl = baseUrl ?? (paths && configPath ? dirname(configPath) : root)
+
+    if (pathsToAliases && resolvedBaseUrl && paths) {
       aliases.push(
         ...parseTsAliases(
-          ensureAbsolute(resolveConfigDir(baseUrl, root), configPath ? dirname(configPath) : root),
+          ensureAbsolute(
+            resolveConfigDir(resolvedBaseUrl, root),
+            configPath ? dirname(configPath) : root,
+          ),
           paths,
         ),
       )
@@ -249,15 +369,16 @@ export class Runtime {
       ),
     ]
 
-    const host = ts.createCompilerHost(compilerOptions)
-    const rebuildProgram = () =>
-      createProgram({
-        host,
-        rootNames,
-        options: compilerOptions,
-        projectReferences: content?.projectReferences,
-      })
-    const program = rebuildProgram()
+    const host =
+      createCompilerHost && process.env.DTS_DISABLE_SOURCE_FILE_CACHE !== '1'
+        ? createCompilerHost(compilerOptions)
+        : ts.createCompilerHost(compilerOptions)
+    const program = createProgram({
+      host,
+      rootNames,
+      options: compilerOptions,
+      projectReferences: content?.projectReferences,
+    })
 
     const libName = toCapitalCase(options.libName || '_default')
     const indexName = options.indexName || defaultIndex
@@ -270,26 +391,33 @@ export class Runtime {
       )
     }
 
+    const emittableSourceFiles = program
+      .getSourceFiles()
+      .filter(maybeEmitted)
+      .map(sourceFile => sourceFile.fileName)
+
+    // TS 6.0 changed the default rootDir to dirname(tsconfig) instead of the common
+    // ancestor of source files, so publicRoot and entryRoot must be computed separately.
+    const sourcePublicPath = queryPublicPath(emittableSourceFiles)
+    const useTs6ImplicitRootDir =
+      !compilerOptions.rootDir &&
+      !(compilerOptions.composite && compilerOptions.configFilePath) &&
+      compare(ts.version, '6.0.0', '>=') &&
+      !!configPath
     let publicRoot = compilerOptions.rootDir
       ? ensureAbsolute(resolveConfigDir(compilerOptions.rootDir, root), root)
       : compilerOptions.composite && compilerOptions.configFilePath
         ? dirname(compilerOptions.configFilePath as string)
-        : queryPublicPath(
-          program
-            .getSourceFiles()
-            .filter(maybeEmitted)
-            .map(sourceFile => sourceFile.fileName),
-        )
+        : useTs6ImplicitRootDir
+          ? dirname(configPath)
+          : sourcePublicPath || (configPath ? dirname(configPath) : root)
     publicRoot = normalizePath(publicRoot)
 
-    let entryRoot = options.entryRoot || publicRoot
+    let entryRoot =
+      options.entryRoot || (useTs6ImplicitRootDir ? sourcePublicPath || publicRoot : publicRoot)
     entryRoot = ensureAbsolute(entryRoot, root)
 
-    const diagnostics = [
-      ...program.getDeclarationDiagnostics(),
-      ...program.getSemanticDiagnostics(),
-      ...program.getSyntacticDiagnostics(),
-    ]
+    const diagnostics = getDiagnostics(program)
 
     if (diagnostics?.length) {
       logger.error(ts.formatDiagnosticsWithColorAndContext(diagnostics, host))
@@ -326,9 +454,295 @@ export class Runtime {
     this.filter = filter
 
     this.program = program
-    this.rebuildProgram = () => {
-      this.program = rebuildProgram()
+    const cacheStats = this.getSourceFileCacheStats()
+    const measureInitialReuse = shouldMeasureProgramReuse()
+    const lastProgramReuse: ProgramReuseStats = {
+      mode: 'fresh',
+      reason: 'initial',
+      sourceFiles: measureInitialReuse ? program.getSourceFiles().length : 0,
+      reusedSourceFiles: 0,
+      nonDefaultSourceFiles: measureInitialReuse
+        ? program
+          .getSourceFiles()
+          .filter(sourceFile => !program.isSourceFileDefaultLibrary(sourceFile)).length
+        : 0,
+      reusedNonDefaultSourceFiles: 0,
+      cacheHits: cacheStats.hits,
+      cacheMisses: cacheStats.misses,
+      cacheInvalidations: cacheStats.invalidations,
+      cacheEntries: cacheStats.entries,
     }
+    this.rebuildProgram = () => {
+      const internals = getRuntimeInternals(this)
+      const { createCompilerHost, createProgram } = internals.programProcessor
+
+      if (createCompilerHost) {
+        this.host =
+          process.env.DTS_DISABLE_SOURCE_FILE_CACHE === '1'
+            ? ts.createCompilerHost(this.compilerOptions)
+            : createCompilerHost(this.compilerOptions)
+      }
+
+      this.program = createProgram({
+        host: this.host,
+        rootNames: this.rootNames,
+        options: this.compilerOptions,
+        projectReferences: internals.projectReferences,
+      })
+      this.programSourceFilesByCanonicalName = undefined
+      this.watchDirectoryNames = undefined
+      this.watchTargets = undefined
+    }
+    runtimeInternals.set(this, {
+      runtimeOptions: options,
+      programProcessor,
+      projectReferences: content?.projectReferences,
+      configWatchDirectories: Object.keys(content?.wildcardDirectories ?? {}).map(normalizePath),
+      emittedFilePaths: new Set(),
+      cleanStaleOutputs: false,
+      lastProgramReuse,
+      rebuildProgramIncremental: changes => this.rebuildProgramIncremental(changes),
+      isConfigFile: fileName => this.isConfigFile(fileName),
+      shouldHandleWatchChange: fileName => this.shouldHandleWatchChange(fileName),
+      getWatchTargets: () => this.getWatchTargets(),
+      filterWatchDirectories: (directories, outputDirectories) =>
+        this.filterWatchDirectories(directories, outputDirectories),
+      isWatchDirectory: fileName => this.isWatchDirectory(fileName),
+    })
+  }
+
+  private getSourceFileCacheStats(): SourceFileCacheStats {
+    return isVersionedCompilerHost(this.host)
+      ? this.host.getSourceFileCacheStats()
+      : { entries: 0, hits: 0, misses: 0, invalidations: 0 }
+  }
+
+  private getCanonicalFileName(fileName: string) {
+    return normalizePath(
+      this.host.getCanonicalFileName(ensureAbsolute(fileName, this.host.getCurrentDirectory())),
+    )
+  }
+
+  private measureProgramReuse(
+    previousProgram: ts.Program,
+    mode: ProgramReuseStats['mode'],
+    reason: string,
+    previousCacheStats: SourceFileCacheStats,
+  ) {
+    const currentCacheStats = this.getSourceFileCacheStats()
+    const cacheStats = {
+      cacheHits: currentCacheStats.hits - previousCacheStats.hits,
+      cacheMisses: currentCacheStats.misses - previousCacheStats.misses,
+      cacheInvalidations: currentCacheStats.invalidations - previousCacheStats.invalidations,
+      cacheEntries: currentCacheStats.entries,
+    }
+
+    if (!shouldMeasureProgramReuse()) {
+      getRuntimeInternals(this).lastProgramReuse = {
+        mode,
+        reason,
+        sourceFiles: 0,
+        reusedSourceFiles: 0,
+        nonDefaultSourceFiles: 0,
+        reusedNonDefaultSourceFiles: 0,
+        ...cacheStats,
+      }
+      return
+    }
+
+    const previousSourceFiles = new Map(
+      previousProgram
+        .getSourceFiles()
+        .map(sourceFile => [this.getCanonicalFileName(sourceFile.fileName), sourceFile] as const),
+    )
+    const sourceFiles = this.program.getSourceFiles()
+    const reusedSourceFiles = sourceFiles.filter(
+      sourceFile =>
+        previousSourceFiles.get(this.getCanonicalFileName(sourceFile.fileName)) === sourceFile,
+    )
+    const nonDefaultSourceFiles = sourceFiles.filter(
+      sourceFile => !this.program.isSourceFileDefaultLibrary(sourceFile),
+    )
+    const reused = new Set(reusedSourceFiles)
+
+    getRuntimeInternals(this).lastProgramReuse = {
+      mode,
+      reason,
+      sourceFiles: sourceFiles.length,
+      reusedSourceFiles: reusedSourceFiles.length,
+      nonDefaultSourceFiles: nonDefaultSourceFiles.length,
+      reusedNonDefaultSourceFiles: nonDefaultSourceFiles.filter(sourceFile =>
+        reused.has(sourceFile),
+      ).length,
+      ...cacheStats,
+    }
+    handleDebug('program rebuild %O', getRuntimeInternals(this).lastProgramReuse)
+  }
+
+  private refreshDiagnostics() {
+    this.diagnostics = getDiagnostics(this.program)
+
+    if (this.diagnostics.length) {
+      this.logger.error(ts.formatDiagnosticsWithColorAndContext(this.diagnostics, this.host))
+    }
+  }
+
+  private rebuildFresh(previousProgram: ts.Program, reason: string) {
+    const internals = getRuntimeInternals(this)
+    const previousHost = this.host
+    const previousLogger = this.logger
+    const preserveVueHost = !!internals.programProcessor.releaseSourceFile && reason !== 'config'
+    if (
+      reason === 'create' ||
+      reason === 'delete' ||
+      reason === 'config' ||
+      reason === 'forced' ||
+      reason === 'untracked-file' ||
+      reason === 'missing-file'
+    ) {
+      internals.cleanStaleOutputs = true
+    }
+    const rebuildProgram = this.rebuildProgram
+    const fresh = new Runtime(
+      preserveVueHost
+        ? {
+          ...internals.runtimeOptions,
+          logger: { info() {}, warn() {}, error() {} },
+        }
+        : internals.runtimeOptions,
+      internals.programProcessor,
+    )
+    const freshInternals = getRuntimeInternals(fresh)
+    Object.assign(this, fresh)
+    Object.defineProperty(this, 'rebuildProgram', {
+      value: rebuildProgram,
+      configurable: true,
+      enumerable: true,
+      writable: true,
+    })
+    internals.projectReferences = freshInternals.projectReferences
+    internals.configWatchDirectories = freshInternals.configWatchDirectories
+    if (preserveVueHost) {
+      this.host = previousHost
+      this.logger = previousLogger
+      this.program = internals.programProcessor.createProgram({
+        host: previousHost,
+        rootNames: this.rootNames,
+        options: this.compilerOptions,
+        projectReferences: internals.projectReferences,
+      })
+      this.programSourceFilesByCanonicalName = undefined
+      this.watchDirectoryNames = undefined
+      this.watchTargets = undefined
+      this.refreshDiagnostics()
+    }
+    this.releaseRemovedProgramSourceFiles(previousProgram)
+    this.measureProgramReuse(previousProgram, 'fresh', reason, {
+      entries: 0,
+      hits: 0,
+      misses: 0,
+      invalidations: 0,
+    })
+  }
+
+  private releaseRemovedProgramSourceFiles(previousProgram: ts.Program) {
+    const { releaseSourceFile } = getRuntimeInternals(this).programProcessor
+    if (!releaseSourceFile) return
+
+    const currentSourceFiles = new Set(
+      this.program
+        .getSourceFiles()
+        .map(sourceFile => this.getCanonicalFileName(sourceFile.fileName)),
+    )
+    for (const sourceFile of previousProgram.getSourceFiles()) {
+      if (!currentSourceFiles.has(this.getCanonicalFileName(sourceFile.fileName))) {
+        releaseSourceFile(previousProgram, sourceFile.fileName)
+      }
+    }
+  }
+
+  private rebuildProgramWithCurrentHost(previousProgram: ts.Program, reason: string) {
+    const internals = getRuntimeInternals(this)
+    this.program = internals.programProcessor.createProgram({
+      host: this.host,
+      rootNames: this.rootNames,
+      options: this.compilerOptions,
+      projectReferences: internals.projectReferences,
+    })
+    this.programSourceFilesByCanonicalName = undefined
+    this.watchDirectoryNames = undefined
+    this.watchTargets = undefined
+    this.refreshDiagnostics()
+    this.releaseRemovedProgramSourceFiles(previousProgram)
+    this.measureProgramReuse(previousProgram, 'fresh', reason, {
+      entries: 0,
+      hits: 0,
+      misses: 0,
+      invalidations: 0,
+    })
+  }
+
+  private rebuildProgramIncremental(changes: readonly ProgramChange[]) {
+    const previousProgram = this.program
+    const host = this.host
+    const programSourceFiles = new Map<string, ts.SourceFile>()
+    let fallbackReason = ''
+
+    for (const change of changes) {
+      const fileName = change.fileName && normalizePath(change.fileName)
+      const event = change.event ?? 'update'
+      const programSourceFile = fileName ? this.getProgramSourceFile(fileName) : undefined
+
+      if (change.forceFresh) fallbackReason = 'forced'
+      else if (!fileName) fallbackReason = 'missing-file'
+      else if (event !== 'update') fallbackReason = event
+      else if (this.isConfigFile(fileName)) fallbackReason = 'config'
+      else if (this.matchResolver(fileName) || fileName.endsWith('.json')) {
+        fallbackReason = 'resolver'
+      } else if (!programSourceFile) fallbackReason = 'untracked-file'
+      else {
+        programSourceFiles.set(
+          this.getCanonicalFileName(programSourceFile.fileName),
+          programSourceFile,
+        )
+      }
+
+      if (fallbackReason) break
+    }
+
+    if (!isVersionedCompilerHost(host)) {
+      const reason = fallbackReason || 'cache-disabled'
+      if (!fallbackReason || fallbackReason === 'resolver') {
+        this.rebuildProgramWithCurrentHost(previousProgram, reason)
+      } else {
+        this.rebuildFresh(previousProgram, reason)
+      }
+      return this.getChangedProgramSourceFiles(changes)
+    }
+
+    if (fallbackReason) {
+      this.rebuildFresh(previousProgram, fallbackReason)
+      return this.getChangedProgramSourceFiles(changes)
+    }
+
+    const previousCacheStats = this.getSourceFileCacheStats()
+    for (const sourceFile of programSourceFiles.values()) {
+      host.invalidateSourceFile(sourceFile.fileName)
+    }
+    const internals = getRuntimeInternals(this)
+    this.program = internals.programProcessor.createProgram({
+      host,
+      rootNames: this.rootNames,
+      options: this.compilerOptions,
+      projectReferences: internals.projectReferences,
+      oldProgram: previousProgram,
+    })
+    this.programSourceFilesByCanonicalName = undefined
+    this.watchDirectoryNames = undefined
+    this.watchTargets = undefined
+    this.refreshDiagnostics()
+    this.measureProgramReuse(previousProgram, 'incremental', 'source-update', previousCacheStats)
+    return this.getChangedProgramSourceFiles(changes)
   }
 
   getHost() {
@@ -339,12 +753,130 @@ export class Runtime {
     return this.program
   }
 
+  private getProgramSourceFile(fileName: string) {
+    if (!this.programSourceFilesByCanonicalName) {
+      this.programSourceFilesByCanonicalName = new Map(
+        this.program
+          .getSourceFiles()
+          .map(sourceFile => [this.getCanonicalFileName(sourceFile.fileName), sourceFile]),
+      )
+    }
+
+    return this.programSourceFilesByCanonicalName.get(this.getCanonicalFileName(fileName))
+  }
+
+  private getChangedProgramSourceFiles(changes: readonly ProgramChange[]) {
+    const sourceFiles = new Set<string>()
+    for (const change of changes) {
+      if (!change.fileName) continue
+      const sourceFile = this.getProgramSourceFile(change.fileName)
+      if (sourceFile) sourceFiles.add(normalizePath(sourceFile.fileName))
+    }
+    return [...sourceFiles]
+  }
+
+  private isConfigFile(fileName: string) {
+    return (
+      !!this.configPath &&
+      this.getCanonicalFileName(fileName) === this.getCanonicalFileName(this.configPath)
+    )
+  }
+
+  private shouldHandleWatchChange(fileName: string) {
+    return (
+      this.filter(fileName) ||
+      this.isConfigFile(fileName) ||
+      !!this.matchResolver(fileName) ||
+      !!this.getProgramSourceFile(fileName)
+    )
+  }
+
+  private getWatchTargets(): RuntimeWatchTargets {
+    if (this.watchTargets) return this.watchTargets
+
+    const files = new Set(this.getRootFiles())
+    const directories = new Set<string>()
+    const contextDirectories = new Set<string>()
+    for (const directory of getRuntimeInternals(this).configWatchDirectories) {
+      directories.add(directory)
+    }
+    if (this.configPath) files.add(normalizePath(this.configPath))
+
+    const { programProcessor } = getRuntimeInternals(this)
+    for (const sourceFile of this.program.getSourceFiles()) {
+      if (programProcessor.isInternalSourceFile?.(sourceFile)) continue
+
+      if (!this.program.isSourceFileDefaultLibrary(sourceFile)) {
+        files.add(normalizePath(sourceFile.fileName))
+
+        if (!this.program.isSourceFileFromExternalLibrary(sourceFile)) {
+          directories.add(normalizePath(dirname(sourceFile.fileName)))
+        }
+      }
+    }
+
+    for (const directory of directories) {
+      const isInsideOutDir = this.outDirs.some(outDir =>
+        this.isPathEqualOrInside(directory, outDir.dir),
+      )
+      const containsOutDir = this.outDirs.some(outDir =>
+        this.isPathEqualOrInside(outDir.dir, directory),
+      )
+
+      if (!isInsideOutDir) files.add(directory)
+      if (!isInsideOutDir && !containsOutDir) contextDirectories.add(directory)
+    }
+
+    this.watchTargets = {
+      files: [...files].filter(file => !directories.has(file)),
+      directories: [...files].filter(file => directories.has(file)),
+      contextDirectories: [...contextDirectories],
+      outputDirectories: this.outDirs.map(outDir => outDir.dir),
+    }
+    return this.watchTargets
+  }
+
+  private isPathEqualOrInside(fileName: string, directory: string) {
+    const canonicalFileName = this.getCanonicalFileName(fileName)
+    const canonicalDirectory = this.getCanonicalFileName(directory)
+    return isCanonicalPathEqualOrInside(canonicalFileName, canonicalDirectory)
+  }
+
+  private filterWatchDirectories(
+    directories: readonly string[],
+    outputDirectories: readonly string[],
+  ) {
+    return directories.filter(directory =>
+      outputDirectories.every(
+        outputDirectory =>
+          !this.isPathEqualOrInside(directory, outputDirectory) &&
+          !this.isPathEqualOrInside(outputDirectory, directory),
+      ),
+    )
+  }
+
+  private isWatchDirectory(fileName: string) {
+    if (!this.watchDirectoryNames) {
+      this.watchDirectoryNames = new Set(
+        this.getWatchTargets().directories.map(directory => this.getCanonicalFileName(directory)),
+      )
+    }
+
+    return this.watchDirectoryNames.has(this.getCanonicalFileName(fileName))
+  }
+
   matchResolver(id: string) {
     return this.resolvers.find(r => r.supports(id))
   }
 
   getRootFiles() {
     return [...this.rootFiles]
+  }
+
+  restoreRootFiles() {
+    for (const file of this.rootNames) {
+      this.rootFiles.add(file)
+    }
   }
 
   addRootFile(fileName: string) {
@@ -426,9 +958,6 @@ export class Runtime {
           },
           undefined,
           true,
-          undefined,
-          // @ts-expect-error
-          true,
         )
 
         if (emitSkipped && diagnostics.length > 0) {
@@ -470,13 +999,15 @@ export class Runtime {
       logPrefix = '[dts]',
       copyDtsFiles = false,
       cleanVueFileName = false,
-      staticImport = false,
+      staticImport: staticImportOpt = false,
       clearPureImport = true,
       insertTypesEntry = false,
       bundleTypes = false,
       beforeWriteFile,
       afterRollup,
     } = options
+
+    const staticImport = bundleTypes ? true : staticImportOpt
 
     const {
       extractorConfig,
@@ -499,7 +1030,12 @@ export class Runtime {
 
     const outDir = outDirs[0].dir
     const primaryOutDirConfig = outDirs[0]
+    // API Extractor 必须先读取 TypeScript 原始可解析的声明图，最终格式在打包后再派生。
+    const intermediateDtsExtension = bundleTypes ? undefined : primaryOutDirConfig.dtsExtension
     const emittedFiles = new Map<string, string>()
+    // 保留转换前的路径，使未指定格式的次输出目录能恢复原始声明后缀。
+    const canonicalOutputPaths = new Map<string, string>()
+    const currentEmittedFilePaths = new Set<string>()
     const declareModules: string[] = []
 
     const writeOutput = async (
@@ -507,20 +1043,24 @@ export class Runtime {
       content: string,
       outDir: string,
       record = true,
-      dtsExtension: '.d.ts' | '.d.cts' | '.d.mts' = '.d.ts',
+      dtsExtension?: NormalizedOutDir['dtsExtension'],
     ) => {
+      let canonicalPath = canonicalOutputPaths.get(normalizePath(path)) ?? path
       // 根据 moduleFormat 转换文件路径后缀
       path = transformDtsPath(path, dtsExtension)
 
       // 对于声明文件（非 .map 文件），转换 sourceMappingURL 注释中的后缀
       if (!path.endsWith('.map')) {
-        const mapExtension =
-          dtsExtension === '.d.cts'
-            ? '.d.cts.map'
-            : dtsExtension === '.d.mts'
-              ? '.d.mts.map'
-              : '.d.ts.map'
+        const mapExtension = `.d.${getJsExtPrefix(path)}ts.map` as const
         content = transformSourceMappingURL(content, mapExtension)
+      } else {
+        try {
+          const sourceMap = JSON.parse(content)
+          sourceMap.file = basename(path.slice(0, -4))
+          content = JSON.stringify(sourceMap)
+        } catch {
+          // 非法 source map 已在处理阶段报告，保留原始内容供调用方检查。
+        }
       }
 
       if (typeof beforeWriteFile === 'function') {
@@ -529,6 +1069,12 @@ export class Runtime {
         if (result === false) return
 
         if (result) {
+          if (result.filePath && result.filePath !== path) {
+            canonicalPath = transformDtsPath(
+              result.filePath,
+              `.d.${getJsExtPrefix(canonicalPath.replace(/\.map$/, ''))}ts`,
+            )
+          }
           path = result.filePath || path
           content = result.content ?? content
         }
@@ -542,20 +1088,22 @@ export class Runtime {
         return
       }
 
-      if (!existsSync(dir)) {
-        await mkdir(dir, { recursive: true })
-      }
+      await mkdir(dir, { recursive: true })
 
       await writeFile(path, content, 'utf-8')
+      currentEmittedFilePaths.add(path)
       record && emittedFiles.set(path, content)
+      record && canonicalOutputPaths.set(path, canonicalPath)
     }
 
+    const { programProcessor } = getRuntimeInternals(this)
     const sourceFiles = this.program.getSourceFiles()
 
     for (const sourceFile of sourceFiles) {
+      if (programProcessor.isInternalSourceFile?.(sourceFile)) continue
       if (!this.filter(sourceFile.fileName)) continue
 
-      if (copyDtsFiles && dtsRE.test(sourceFile.fileName)) {
+      if ((copyDtsFiles || bundleTypes) && dtsRE.test(sourceFile.fileName)) {
         outputFiles.set(normalizePath(sourceFile.fileName), sourceFile.getFullText())
       }
 
@@ -591,14 +1139,135 @@ export class Runtime {
       }
     }
 
+    const getOutputRelativePath = (filePath: string) => {
+      const cleanedFilePath = cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath
+      let relativePath = relative(entryRoot, cleanedFilePath)
+
+      // 当 entryRoot 是子目录时，entryRoot 之外的文件会被映射到 outDir 之外。
+      // 此时回退到使用项目根目录作为基准，确保文件仍被正确写入 outDir 内。
+      if (relativePath.startsWith('..')) {
+        relativePath = relative(root, cleanedFilePath)
+      }
+
+      return relativePath
+    }
+
+    const rewritePrimarySpecifiers = !bundleTypes && !!primaryOutDirConfig.moduleFormat
+    const declarationRelativePaths = rewritePrimarySpecifiers
+      ? new Map(
+        Array.from(declarationFiles.keys()).map(filePath => [
+          normalizePath(filePath),
+          getOutputRelativePath(filePath),
+        ]),
+      )
+      : undefined
+    const compilerOptions = this.program.getCompilerOptions()
+
+    const createModuleResolutionContext = (
+      files: ReadonlyMap<string, string>,
+      aliases: ReadonlyMap<string, string> = new Map(),
+    ) => {
+      const resolutionFiles = new Map<string, { content: string, sourcePath: string }>()
+
+      for (const [filePath, content] of files) {
+        if (filePath.endsWith('.map')) continue
+
+        const sourcePath = normalizePath(filePath)
+        resolutionFiles.set(sourcePath, { content, sourcePath })
+
+        const alias = aliases.get(sourcePath)
+        if (alias) {
+          resolutionFiles.set(alias, { content, sourcePath })
+        }
+      }
+
+      // 同目录的声明共享解析结果；缓存仅在本次输出中有效，避免 watch 重建复用旧声明图。
+      const resolutionCache = ts.createModuleResolutionCache(
+        currentDir,
+        normalizePath,
+        compilerOptions,
+      )
+      const host: ts.ModuleResolutionHost = {
+        fileExists: filePath => resolutionFiles.has(normalizePath(filePath)),
+        readFile: filePath => resolutionFiles.get(normalizePath(filePath))?.content,
+      }
+
+      return {
+        resolve(importerPath: string, specifier: string) {
+          const resolvedModule = ts.resolveModuleName(
+            specifier,
+            importerPath,
+            compilerOptions,
+            host,
+            resolutionCache,
+          ).resolvedModule
+          const resolvedPath = resolvedModule
+            ? resolutionFiles.get(normalizePath(resolvedModule.resolvedFileName))?.sourcePath
+            : undefined
+
+          return resolvedPath
+        },
+      }
+    }
+
+    const declarationAliases = new Map<string, string>()
+    if (rewritePrimarySpecifiers && cleanVueFileName) {
+      for (const filePath of declarationFiles.keys()) {
+        const normalizedPath = normalizePath(filePath)
+        const cleanedPath = normalizePath(cleanVueDtsFileName(filePath))
+        if (cleanedPath !== normalizedPath) {
+          declarationAliases.set(normalizedPath, cleanedPath)
+        }
+      }
+    }
+    const canonicalResolution = rewritePrimarySpecifiers
+      ? createModuleResolutionContext(declarationFiles, declarationAliases)
+      : undefined
+
+    const toRuntimeModuleSpecifier = (importerPath: string, targetPath: string) => {
+      let specifier = normalizePath(relative(dirname(importerPath), targetPath))
+      specifier = specifier.replace(dtsRE, (_, prefix) => `.${prefix || ''}js`)
+      return fullRelativeRE.test(specifier) ? specifier : `./${specifier}`
+    }
+
+    const createCanonicalSpecifierTransform = (
+      importerSourcePath: string,
+      targetOutDirConfig: NormalizedOutDir,
+    ) => {
+      if (!declarationRelativePaths || !canonicalResolution) return undefined
+
+      const normalizedImporterPath = normalizePath(importerSourcePath)
+      const importerRelativePath = declarationRelativePaths.get(normalizedImporterPath)
+      if (!importerRelativePath) return undefined
+
+      const importerOutputPath = transformDtsPath(
+        resolve(targetOutDirConfig.dir, importerRelativePath),
+        targetOutDirConfig.dtsExtension,
+      )
+
+      return (specifier: string) => {
+        if (!fullRelativeRE.test(specifier)) return specifier
+
+        const resolvedSourcePath = canonicalResolution.resolve(normalizedImporterPath, specifier)
+        const resolvedRelativePath = resolvedSourcePath
+          ? declarationRelativePaths.get(resolvedSourcePath)
+          : undefined
+        if (!resolvedRelativePath) return specifier
+
+        const targetOutputPath = transformDtsPath(
+          resolve(targetOutDirConfig.dir, resolvedRelativePath),
+          targetOutDirConfig.dtsExtension,
+        )
+        return toRuntimeModuleSpecifier(importerOutputPath, targetOutputPath)
+      }
+    }
+
     await runParallel(
-      cpus().length,
+      maxConcurrency,
       Array.from(declarationFiles.entries()),
       async ([filePath, content]) => {
-        const newFilePath = resolve(
-          outDir,
-          relative(entryRoot, cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath),
-        )
+        const relativePath = getOutputRelativePath(filePath)
+        const newFilePath = resolve(outDir, relativePath)
 
         if (content) {
           const result = transformCode({
@@ -609,6 +1278,10 @@ export class Runtime {
             staticImport,
             clearPureImport,
             cleanVueFileName,
+            replaceUnresolvedVLS: !!bundleTypes,
+            transformModuleSpecifier: rewritePrimarySpecifiers
+              ? createCanonicalSpecifierTransform(filePath, primaryOutDirConfig)
+              : undefined,
           })
 
           content = result.content
@@ -616,30 +1289,30 @@ export class Runtime {
 
           if (result.diffLineCount) {
             // 使用转换后的路径作为 key
-            const transformedPath = transformDtsPath(newFilePath, primaryOutDirConfig.dtsExtension)
+            const transformedPath = transformDtsPath(newFilePath, intermediateDtsExtension)
             prependMappings.set(`${transformedPath}.map`, ';'.repeat(result.diffLineCount))
           }
         }
 
-        await writeOutput(newFilePath, content, outDir, true, primaryOutDirConfig.dtsExtension)
+        await writeOutput(newFilePath, content, outDir, true, intermediateDtsExtension)
       },
     )
 
     await runParallel(
-      cpus().length,
+      maxConcurrency,
       Array.from(mapFiles.entries()),
       async ([filePath, content]) => {
         const baseDir = dirname(filePath)
-
-        filePath = resolve(
-          outDir,
-          relative(entryRoot, cleanVueFileName ? cleanVueDtsFileName(filePath) : filePath),
-        )
+        const relativePath = getOutputRelativePath(filePath)
+        filePath = resolve(outDir, relativePath)
 
         try {
           const sourceMap: { sources: string[], mappings: string } = JSON.parse(content)
 
           sourceMap.sources = sourceMap.sources.map(source => {
+            // 跨盘源码可能由 TypeScript 表示为文件 URL，不能按相对路径重定位。
+            if (source.startsWith('file:')) return source
+
             return normalizePath(
               relative(
                 dirname(filePath),
@@ -649,7 +1322,7 @@ export class Runtime {
           })
 
           // 使用转换后的路径检查 prependMappings
-          const transformedFilePath = transformDtsPath(filePath, primaryOutDirConfig.dtsExtension)
+          const transformedFilePath = transformDtsPath(filePath, intermediateDtsExtension)
           if (prependMappings.has(transformedFilePath)) {
             sourceMap.mappings = `${prependMappings.get(transformedFilePath)}${sourceMap.mappings}`
           }
@@ -659,7 +1332,7 @@ export class Runtime {
           logger.warn(`${logPrefix} ${yellow('Processing source map fail:')} ${filePath}`)
         }
 
-        await writeOutput(filePath, content, outDir, true, primaryOutDirConfig.dtsExtension)
+        await writeOutput(filePath, content, outDir, true, intermediateDtsExtension)
       },
     )
 
@@ -668,27 +1341,37 @@ export class Runtime {
     if (insertTypesEntry || bundleTypes) {
       const pkgPath = tryGetPkgPath(root)
 
-      let pkg: any
+      let pkg: any = {}
       try {
-        pkg = pkgPath && existsSync(pkgPath) ? JSON.parse(await readFile(pkgPath, 'utf-8')) : {}
+        if (pkgPath) pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
       } catch (e) {}
 
       // 使用主输出目录的后缀配置
       const primaryDtsExtension = primaryOutDirConfig.dtsExtension
 
+      const toCanonicalDtsPath = (file: string) => tsToDtsWithExtension(file)
       const transformed = new Set(
-        Array.from(transformedFiles).map(file => {
-          file = relative(entryRoot, file)
-          return `${file.replace(tjsRE, '')}.d.${getJsExtPrefix(file)}ts`
-        }),
+        Array.from(transformedFiles).map(file => toCanonicalDtsPath(relative(entryRoot, file))),
       )
 
       const entryNames = Object.keys(entries)
       const types = findTypesPath(pkg.publishConfig, pkg)
       const multiple = entryNames.length > 1
+      // 空入口无需 API Extractor 处理，避免从整个 TS Program 引入无关的全局声明。
+      const emptyEntryFiles = new Set<string>()
+      const entryPaths = new Map<string, string>()
+
+      const entryExtension = (name: string) => `.d.${getJsExtPrefix(entries[name])}ts` as const
 
       let typesPath = cleanPath(
-        types ? resolve(root, types) : resolve(outDir, indexName),
+        types
+          ? resolve(root, types)
+          : resolve(
+            outDir,
+            entryNames.length === 1
+              ? transformDtsPath(indexName, entryExtension(entryNames[0]))
+              : indexName,
+          ),
         emittedFiles,
       )
 
@@ -700,54 +1383,68 @@ export class Runtime {
         typesPath = `${typesPath.replace(tjsRE, '')}.d.${getJsExtPrefix(typesPath)}ts`
       }
 
-      // 根据 moduleFormat 转换 typesPath 后缀
-      typesPath = transformDtsPath(typesPath, primaryDtsExtension)
+      // 打包入口也保留原始后缀，避免覆盖尚未打包的声明图。
+      const entryDtsExtension = bundleTypes ? undefined : primaryDtsExtension
 
       for (const name of entryNames) {
-        const entryDtsPath = multiple
+        const canonicalEntryPath = multiple
           ? cleanPath(
-            resolve(outDir, tsToDtsWithExtension(name, primaryDtsExtension)),
+            resolve(outDir, tsToDtsWithExtension(name, entryExtension(name))),
             emittedFiles,
           )
           : typesPath
+        const entryDtsPath = transformDtsPath(canonicalEntryPath, entryDtsExtension)
+        entryPaths.set(name, entryDtsPath)
+        canonicalOutputPaths.set(normalizePath(entryDtsPath), canonicalEntryPath)
+
+        const sourceEntryPath = bundleTypes
+          ? toCanonicalDtsPath(entries[name])
+          : tsToDtsWithExtension(entries[name], primaryDtsExtension)
+        const sourceEntry = normalizePath(
+          cleanPath(resolve(outDir, relative(entryRoot, sourceEntryPath)), emittedFiles),
+        )
+
+        if (entryDtsPath === sourceEntry) {
+          if (!isEmptyDeclarationEntry(emittedFiles.get(sourceEntry))) continue
+
+          const emptyEntryPath = normalizePath(cleanPath(entryDtsPath, emittedFiles))
+
+          await writeOutput(emptyEntryPath, 'export {}\n', outDir, true, entryDtsExtension)
+
+          if (emittedFiles.has(emptyEntryPath)) {
+            emptyEntryFiles.add(emptyEntryPath)
+          }
+          continue
+        }
 
         if (transformed.has(relative(outDir, entryDtsPath)) && existsSync(entryDtsPath)) continue
 
-        const sourceEntry = normalizePath(
-          cleanPath(
-            resolve(
-              outDir,
-              relative(entryRoot, tsToDtsWithExtension(entries[name], primaryDtsExtension)),
-            ),
-            emittedFiles,
-          ),
-        )
-
         let fromPath = normalizePath(relative(dirname(entryDtsPath), sourceEntry))
 
-        fromPath = fromPath.replace(dtsRE, '')
+        fromPath = fromPath.replace(dtsRE, (_, prefix) => `.${prefix || ''}js`)
         fromPath = fullRelativeRE.test(fromPath) ? fromPath : `./${fromPath}`
 
         let content = 'export {}\n'
+        const sourceContent = emittedFiles.get(sourceEntry)
 
-        if (emittedFiles.has(sourceEntry)) {
-          if (hasNormalExport(emittedFiles.get(sourceEntry)!)) {
+        if (typeof sourceContent === 'string') {
+          if (hasNormalExport(sourceContent)) {
             content = `export * from '${fromPath}'\n${content}`
           }
 
-          if (hasExportDefault(emittedFiles.get(sourceEntry)!)) {
+          if (hasExportDefault(sourceContent)) {
             content += `import ${libName} from '${fromPath}'\nexport default ${libName}\n${content}`
           }
         }
 
         // 入口文件已经使用了正确的后缀，无需再次转换
-        await writeOutput(
-          cleanPath(entryDtsPath, emittedFiles),
-          content,
-          outDir,
-          true,
-          primaryDtsExtension,
-        )
+        const syntheticEntryPath = normalizePath(cleanPath(entryDtsPath, emittedFiles))
+
+        await writeOutput(syntheticEntryPath, content, outDir, true, entryDtsExtension)
+
+        if (isEmptyDeclarationEntry(sourceContent) && emittedFiles.has(syntheticEntryPath)) {
+          emptyEntryFiles.add(syntheticEntryPath)
+        }
       }
 
       handleDebug('insert index')
@@ -756,73 +1453,123 @@ export class Runtime {
         logger.info(green(`${logPrefix} Start bundling declaration files...`))
 
         if (!getHasExtractor()) {
-          logger.error(
-            `\n${logPrefix} ${red("Failed to load '@microsoft/api-extractor', have you installed it?")}\n`,
-          )
-          logger.warn(
-            `\n${logPrefix} ${yellow('Error occurred, skip bundle declaration files.')}\n`,
+          throw new Error(
+            `${logPrefix} Failed to load '@microsoft/api-extractor'. ` +
+              'Install it before enabling bundleTypes.',
           )
         } else {
           const rollupFiles = new Set<string>()
           const compilerOptions = configPath
             ? getTsConfig(configPath, this.host.readFile).compilerOptions
             : rawCompilerOptions
-
-          const rollup = async (path: string) => {
-            const result = await bundleDtsFiles({
-              root,
+          const provider = normalizeProvider(
+            createApiExtractorProvider({
               // api-extractor.json
               configPath: bundleConfigPath,
+              extractorConfig,
+              bundledPackages,
+              invokeOptions,
+            }),
+          )
+          const bundleResolution = createModuleResolutionContext(emittedFiles)
+          const declarationModuleExtensions = new Set([
+            '',
+            '.js',
+            '.jsx',
+            '.mjs',
+            '.cjs',
+            '.ts',
+            '.tsx',
+            '.mts',
+            '.cts',
+            '.vue',
+            '.svelte',
+          ])
+
+          const bundleEntry = async (path: string) => {
+            path = normalizePath(path)
+
+            if (emptyEntryFiles.has(path)) return
+
+            const result = await provider.bundle({
+              root,
               // tsconfig.json
               tsconfigPath: configPath,
               compilerOptions,
               outDir,
               entryPath: path,
+              outputPath: path,
               // fileName 已经包含正确的后缀（.d.ts / .d.cts / .d.mts）
               fileName: basename(path),
               libFolder: getTsLibFolder(),
-              extractorConfig,
-              bundledPackages,
-              invokeOptions,
+              logger,
             })
+
+            if (!result.succeeded) {
+              throw new Error(
+                `${logPrefix} Failed to bundle declaration file ${path} with ${provider.name ?? 'the configured provider'} ` +
+                  `(${result.errorCount ?? 0} errors, ${result.warningCount ?? 0} warnings).`,
+              )
+            }
+
+            const bundledContent = await readFile(path, 'utf-8')
+            const danglingSpecifiers = collectRelativeModuleSpecifiers(bundledContent).filter(
+              specifier =>
+                bundleResolution.resolve(path, specifier) !== undefined ||
+                declarationModuleExtensions.has(extname(specifier)),
+            )
+            if (danglingSpecifiers.length) {
+              throw new Error(
+                `${logPrefix} Bundled declaration file ${path} contains unresolved relative imports: ` +
+                  danglingSpecifiers.join(', '),
+              )
+            }
 
             emittedFiles.delete(path)
             rollupFiles.add(path)
 
             if (typeof afterRollup === 'function') {
-              await unwrapPromise(afterRollup(result))
+              await unwrapPromise(afterRollup(result.meta as ExtractorResult))
             }
           }
 
-          if (multiple) {
-            await runParallel(cpus().length, entryNames, async name => {
-              // 使用正确的后缀生成打包文件路径
-              await rollup(
-                cleanPath(
-                  resolve(outDir, tsToDtsWithExtension(name, primaryDtsExtension)),
-                  emittedFiles,
-                ),
-              )
-            })
-          } else {
-            // typesPath 已经在上面转换为正确的后缀
-            await rollup(typesPath)
-          }
+          await runParallel(
+            maxConcurrency,
+            entryPaths.size ? Array.from(entryPaths.values()) : [typesPath],
+            bundleEntry,
+          )
 
-          await runParallel(cpus().length, Array.from(emittedFiles.keys()), f => unlink(f))
+          const emptyEntries = new Map(
+            Array.from(emittedFiles).filter(([filePath]) => emptyEntryFiles.has(filePath)),
+          )
+          const unbundledFiles = Array.from(emittedFiles.keys()).filter(
+            filePath => !emptyEntryFiles.has(filePath),
+          )
+
+          await runParallel(maxConcurrency, unbundledFiles, f => unlink(f))
+          for (const file of unbundledFiles) currentEmittedFilePaths.delete(file)
           removeDirIfEmpty(outDir)
           emittedFiles.clear()
 
           const declared = declareModules.join('\n')
 
-          await runParallel(cpus().length, [...rollupFiles], async filePath => {
+          const bundledPaths = [...rollupFiles, ...emptyEntries.keys()]
+          await runParallel(maxConcurrency, bundledPaths, async filePath => {
             await writeOutput(
               filePath,
-              (await readFile(filePath, 'utf-8')) + (declared ? `\n${declared}` : ''),
+              emptyEntries.get(filePath) ??
+                (await readFile(filePath, 'utf-8')) + (declared ? `\n${declared}` : ''),
               dirname(filePath),
               true,
               primaryDtsExtension,
             )
+          })
+
+          // 最终格式可能与中间文件不同，只清理未被最终输出复用的中间路径。
+          await runParallel(maxConcurrency, bundledPaths, async filePath => {
+            if (emittedFiles.has(filePath)) return
+            await unlink(filePath)
+            currentEmittedFilePaths.delete(filePath)
           })
 
           handleDebug('rollup output')
@@ -832,53 +1579,137 @@ export class Runtime {
 
     if (outDirs.length > 1) {
       const extraOutDirs = outDirs.slice(1)
+      let primaryResolution: ReturnType<typeof createModuleResolutionContext> | undefined
+      const transformedContentCache = new Map<string, string>()
 
-      await runParallel(cpus().length, Array.from(emittedFiles), async ([wroteFile, content]) => {
-        const relativePath = relative(outDir, wroteFile)
+      await runParallel(maxConcurrency, Array.from(emittedFiles), async ([wroteFile, content]) => {
+        const relativePath = relative(outDir, canonicalOutputPaths.get(wroteFile) ?? wroteFile)
 
         await Promise.all(
           extraOutDirs.map(async targetOutDirConfig => {
             const targetOutDir = targetOutDirConfig.dir
+            let targetContent = content
             // 转换文件路径后缀：从主目录的后缀转换为目标目录的后缀
-            let transformedRelativePath = relativePath
-
-            // 如果主目录和目标目录的后缀不同，需要转换
-            if (primaryOutDirConfig.dtsExtension !== targetOutDirConfig.dtsExtension) {
-              // 先将路径还原为 .d.ts 格式，再转换为目标后缀
-              if (relativePath.endsWith(primaryOutDirConfig.mapExtension)) {
-                // 处理 source map 文件
-                const basePath = relativePath.slice(0, -primaryOutDirConfig.mapExtension.length)
-                transformedRelativePath = basePath + targetOutDirConfig.mapExtension
-              } else if (relativePath.endsWith(primaryOutDirConfig.dtsExtension)) {
-                // 处理声明文件
-                const basePath = relativePath.slice(0, -primaryOutDirConfig.dtsExtension.length)
-                transformedRelativePath = basePath + targetOutDirConfig.dtsExtension
-              }
-            }
+            const transformedRelativePath = transformDtsPath(
+              relativePath,
+              targetOutDirConfig.dtsExtension,
+            )
 
             const path = resolve(targetOutDir, transformedRelativePath)
 
-            if (
-              wroteFile.endsWith('.map') ||
-              wroteFile.endsWith(primaryOutDirConfig.mapExtension)
-            ) {
+            if (wroteFile.endsWith('.map')) {
               // edit `sources` section with correct relative path of source map file
-              const editedContent = editSourceMapDir(content, outDir, targetOutDir)
+              const editedContent = editSourceMapDir(targetContent, outDir, targetOutDir)
               if (editedContent === false) {
                 logger.warn(`${logPrefix} ${yellow('Processing source map fail:')} ${path}`)
               } else if (typeof editedContent === 'string') {
-                content = editedContent
+                targetContent = editedContent
+              }
+            } else if (
+              !bundleTypes &&
+              primaryOutDirConfig.dtsExtension !== targetOutDirConfig.dtsExtension
+            ) {
+              const cacheKey = `${wroteFile}\0${targetOutDirConfig.dtsExtension}`
+              const cachedContent = transformedContentCache.get(cacheKey)
+
+              if (cachedContent !== undefined) {
+                targetContent = cachedContent
+              } else {
+                targetContent = transformModuleSpecifiers(targetContent, specifier => {
+                  if (!fullRelativeRE.test(specifier)) return specifier
+
+                  primaryResolution ??= createModuleResolutionContext(emittedFiles)
+                  const resolvedPrimaryPath = primaryResolution.resolve(wroteFile, specifier)
+                  if (!resolvedPrimaryPath) return specifier
+
+                  const targetPath = transformDtsPath(
+                    resolve(
+                      targetOutDir,
+                      relative(
+                        outDir,
+                        canonicalOutputPaths.get(resolvedPrimaryPath) ?? resolvedPrimaryPath,
+                      ),
+                    ),
+                    targetOutDirConfig.dtsExtension,
+                  )
+                  return toRuntimeModuleSpecifier(path, targetPath)
+                })
+                transformedContentCache.set(cacheKey, targetContent)
               }
             }
 
-            await writeOutput(path, content, targetOutDir, false, targetOutDirConfig.dtsExtension)
+            await writeOutput(
+              path,
+              targetContent,
+              targetOutDir,
+              false,
+              targetOutDirConfig.dtsExtension,
+            )
           }),
         )
       })
+    }
+
+    const internals = getRuntimeInternals(this)
+    if (internals.cleanStaleOutputs) {
+      const staleFiles = [...internals.emittedFilePaths].filter(
+        fileName => !currentEmittedFilePaths.has(fileName),
+      )
+      await runParallel(maxConcurrency, staleFiles, async fileName => {
+        try {
+          await unlink(fileName)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
+      })
+      internals.emittedFilePaths = currentEmittedFilePaths
+      internals.cleanStaleOutputs = false
+    } else {
+      for (const fileName of currentEmittedFilePaths) {
+        internals.emittedFilePaths.add(fileName)
+      }
     }
 
     this.clearTransformedFiles()
 
     return emittedFiles
   }
+}
+
+export function rebuildRuntimeProgram(
+  runtime: Runtime,
+  changes: ProgramChange | readonly ProgramChange[],
+) {
+  return getRuntimeInternals(runtime).rebuildProgramIncremental(
+    Array.isArray(changes) ? changes : [changes],
+  )
+}
+
+export function isRuntimeConfigFile(runtime: Runtime, fileName: string) {
+  return getRuntimeInternals(runtime).isConfigFile(fileName)
+}
+
+export function shouldHandleRuntimeWatchChange(runtime: Runtime, fileName: string) {
+  return getRuntimeInternals(runtime).shouldHandleWatchChange(fileName)
+}
+
+export function getRuntimeWatchTargets(
+  runtime: Runtime,
+  bundlerOutputDirectories: readonly string[] = [],
+) {
+  const internals = getRuntimeInternals(runtime)
+  const targets = internals.getWatchTargets()
+  return {
+    files: [...targets.files],
+    directories: [...targets.directories],
+    contextDirectories: internals.filterWatchDirectories(
+      targets.contextDirectories,
+      bundlerOutputDirectories,
+    ),
+    outputDirectories: [...targets.outputDirectories],
+  }
+}
+
+export function isRuntimeWatchDirectory(runtime: Runtime, fileName: string) {
+  return getRuntimeInternals(runtime).isWatchDirectory(fileName)
 }

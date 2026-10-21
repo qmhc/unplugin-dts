@@ -1,6 +1,6 @@
 {
   "name": "unplugin-dts",
-  "version": "1.0.0-beta.6",
+  "version": "1.1.2",
   "type": "module",
   "license": "MIT",
   "author": "qmhc",
@@ -91,7 +91,7 @@
     "dist"
   ],
   "engines": {
-    "node": "^14.18.0 || >=16.0.0"
+    "node": ">=20"
   },
   "keywords": [
     "unplugin",
@@ -112,26 +112,27 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/qmhc/vite-plugin-dts.git",
+    "url": "git+https://github.com/qmhc/unplugin-dts.git",
     "directory": "packages/unplugin-dts"
   },
   "bugs": {
-    "url": "https://github.com/qmhc/vite-plugin-dts/issues"
+    "url": "https://github.com/qmhc/unplugin-dts/issues"
   },
   "dependencies": {
     "@rollup/pluginutils": "^5.1.4",
     "@volar/typescript": "^2.4.26",
     "compare-versions": "^6.1.1",
     "debug": "^4.4.0",
+    "glob-to-regexp": "0.4.1",
     "kolorist": "^1.8.0",
     "local-pkg": "^1.1.1",
     "magic-string": "^0.30.17",
     "unplugin": "^2.3.2"
   },
   "peerDependencies": {
-    "@microsoft/api-extractor": ">=7",
+    "@microsoft/api-extractor": ">=7.57.7",
     "@rspack/core": "^1",
-    "@vue/language-core": "~3.1.5",
+    "@vue/language-core": "^3.1.5",
     "esbuild": "*",
     "rolldown": "*",
     "rollup": ">=3",

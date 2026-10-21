@@ -1,6 +1,0 @@
-types/
-dist/
-tsc-dist/
-node_modules/
-components/*.d.ts
-docs/

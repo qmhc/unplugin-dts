@@ -1,11 +1,38 @@
 import type ts from 'typescript'
-import type {
-  ExtractorResult,
-  IExtractorConfigPrepareOptions,
-  IExtractorInvokeOptions,
-} from '@microsoft/api-extractor'
 import type { MaybePromise } from './utils'
 import type { Resolver } from './resolvers'
+
+export interface Alias {
+  find: string | RegExp,
+  replacement: string,
+  customResolver?: any,
+}
+
+export interface ExtractorResult {
+  succeeded: boolean,
+  apiReportChanged: boolean,
+  errorCount: number,
+  warningCount: number,
+}
+
+export interface ExtractorInvokeOptions {
+  localBuild?: boolean,
+  showVerboseMessages?: boolean,
+  showDiagnostics?: boolean,
+  typescriptCompilerFolder?: string,
+}
+
+export interface BundleConfig {
+  newlineKind?: 'crlf' | 'lf' | 'os',
+  testMode?: boolean,
+  enumMemberOrder?: 'by-name' | 'preserve',
+  compiler?: Record<string, any>,
+  apiReport?: Record<string, any>,
+  docModel?: Record<string, any>,
+  dtsRollup?: Record<string, any>,
+  tsdocMetadata?: Record<string, any>,
+  messages?: Record<string, any>,
+}
 
 /**
  * Module format type
@@ -23,7 +50,7 @@ export interface OutDirConfig {
    * Module format, determines declaration file extension
    * - 'cjs': generates .d.cts files
    * - 'esm': generates .d.mts files
-   * - undefined: generates .d.ts files (default)
+   * - undefined：保留 TypeScript 原始声明后缀（默认）
    */
   moduleFormat?: ModuleFormat,
 }
@@ -38,10 +65,10 @@ export interface NormalizedOutDir {
   dir: string,
   /** Module format */
   moduleFormat: ModuleFormat | undefined,
-  /** Declaration file extension */
-  dtsExtension: '.d.ts' | '.d.cts' | '.d.mts',
+  /** 声明后缀；未指定时保留原始后缀 */
+  dtsExtension: '.d.ts' | '.d.cts' | '.d.mts' | undefined,
   /** Source map file extension */
-  mapExtension: '.d.ts.map' | '.d.cts.map' | '.d.mts.map',
+  mapExtension: '.d.ts.map' | '.d.cts.map' | '.d.mts.map' | undefined,
 }
 
 export interface Logger {
@@ -49,11 +76,6 @@ export interface Logger {
   warn: (msg: string) => void,
   error: (msg: string) => void,
 }
-
-export type BundleConfig = Omit<
-  IExtractorConfigPrepareOptions['configObject'],
-  'extends' | 'projectFolder' | 'mainEntryPointFilePath' | 'bundledPackages'
->
 
 export type AliasOptions =
   | {
@@ -64,7 +86,10 @@ export type AliasOptions =
 
 export interface CreateRuntimeOptions {
   /**
-   * Specify which (program) process you prefer.
+   * Specify which (program) processor you prefer.
+   *
+   * When not specified, the plugin will automatically detect `.vue` files
+   * and use `'vue'` processor if needed.
    *
    * @default 'ts'
    */
@@ -181,7 +206,6 @@ export interface EmitOptions {
    * Whether to copy .d.ts source files to `outDir`.
    *
    * @default false
-   * @remarks Before 2.0, the default was `true`.
    */
   copyDtsFiles?: boolean,
   /**
@@ -195,7 +219,7 @@ export interface EmitOptions {
   /**
    * Whether to transform dynamic imports to static (eg `import('vue').DefineComponent` to `import { DefineComponent } from 'vue'`).
    *
-   * Value is forced to `true` when `rollupTypes` is `true`.
+   * Value is forced to `true` when `bundleTypes` is enabled.
    *
    * @default false
    */
@@ -211,7 +235,7 @@ export interface EmitOptions {
    *
    * When `true`, uses package.json `types` property if it exists or `${outDir}/index.d.ts`.
    *
-   * Value is forced to `true` when `rollupTypes` is `true`.
+   * Value is forced to `true` when `bundleTypes` is enabled.
    *
    * @default false
    */
@@ -246,7 +270,7 @@ export interface EmitOptions {
          * @default {}
          * @see https://api-extractor.com/pages/setup/invoking/#invoking-from-a-build-script
          */
-      invokeOptions?: IExtractorInvokeOptions,
+      invokeOptions?: ExtractorInvokeOptions,
       /**
          * Specify a real api-extractor config file path.
          *

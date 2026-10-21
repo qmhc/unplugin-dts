@@ -1,7 +1,13 @@
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { hasExportDefault, normalizeGlob, transformCode } from '../src/core/transform'
+import {
+  collectRelativeModuleSpecifiers,
+  hasExportDefault,
+  normalizeGlob,
+  transformCode,
+  transformModuleSpecifiers,
+} from '../src/core/transform'
 import { parseTsAliases } from '../src/core/utils'
 
 import type { Alias } from 'vite'
@@ -21,6 +27,39 @@ describe('transform tests', () => {
     expect(normalizeGlob('a/b*')).toEqual('a/b*/**')
     expect(normalizeGlob('a/*')).toEqual('a/*')
     expect(normalizeGlob('a/**')).toEqual('a/**')
+  })
+
+  it('test: collectRelativeModuleSpecifiers', () => {
+    expect(
+      collectRelativeModuleSpecifiers(`
+        import type { A } from './a'
+        export { B } from '../b.js'
+        type C = import('./c').C
+        import D = require('./d.cjs')
+        import type { External } from 'external'
+      `),
+    ).toEqual(['./a', '../b.js', './c', './d.cjs'])
+  })
+
+  it('test: transformModuleSpecifiers', () => {
+    const content = `
+      import './side-effect'
+      export { A } from './a'
+      type B = import('./b').B
+      import C = require('./c')
+      import('external')
+    `
+
+    expect(
+      transformModuleSpecifiers(content, specifier =>
+        specifier.startsWith('.') ? `${specifier}.mjs` : specifier,
+      ),
+    ).toContain("import './side-effect.mjs'")
+    expect(
+      transformModuleSpecifiers(content, specifier =>
+        specifier.startsWith('.') ? `${specifier}.mjs` : specifier,
+      ),
+    ).toContain("require('./c.mjs')")
   })
 
   it('test: transformCode (dynamic imports to static)', () => {
@@ -64,6 +103,28 @@ describe('transform tests', () => {
       ).content,
     ).toEqual(
       "import { ServiceConstructor, default as __DTS_DEFAULT_0__ } from './Service';\ndeclare const _default: ServiceConstructor<__DTS_DEFAULT_0__>;",
+    )
+
+    expect(
+      transformCode(
+        options('type Props = InstanceType<typeof import("./notification.vue").default>["$props"];'),
+      ).content,
+    ).toEqual(
+      'import { default as __DTS_DEFAULT_0__ } from \'./notification.vue\';\ntype Props = InstanceType<typeof __DTS_DEFAULT_0__>["$props"];',
+    )
+
+    expect(
+      transformCode(options('type Factory = typeof import("./factory").create;')).content,
+    ).toEqual("import { create } from './factory';\ntype Factory = typeof create;")
+
+    expect(
+      transformCode(
+        options(
+          'declare const service: import("./Service").ServiceConstructor<typeof import("./Service").default>;',
+        ),
+      ).content,
+    ).toEqual(
+      "import { ServiceConstructor, default as __DTS_DEFAULT_0__ } from './Service';\ndeclare const service: ServiceConstructor<typeof __DTS_DEFAULT_0__>;",
     )
 
     expect(
@@ -283,6 +344,33 @@ describe('transform tests', () => {
     ).toEqual("import { someFutureImport } from 'installedDependency';\n")
   })
 
+  it('test: transformCode — wildcard * before @/* does not block @/ resolution', () => {
+    const tsPaths = {
+      '*': ['tests/__fixtures__/*'],
+      '@/*': ['src/*'],
+    }
+
+    const aliases = parseTsAliases(resolve(__dirname, '..'), tsPaths)
+
+    const options = (content: string) => ({
+      content,
+      filePath: resolve(__dirname, '../src/index.ts'),
+      aliases,
+      aliasesExclude: [],
+      staticImport: true,
+      clearPureImport: true,
+      cleanVueFileName: true,
+    })
+
+    expect(transformCode(options('import { Foo } from "@/foo";')).content).toEqual(
+      "import { Foo } from './foo';\n",
+    )
+
+    expect(transformCode(options('import { Foo } from "@/nested/foo";')).content).toEqual(
+      "import { Foo } from './nested/foo';\n",
+    )
+  })
+
   it('test: transformCode (remove pure imports)', () => {
     const options = (content: string) => ({
       content,
@@ -329,6 +417,49 @@ describe('transform tests', () => {
       transformCode(options("const foo: import('./foo.vue').Foo<import('./baz.vue').Baz[]>"))
         .content,
     ).toEqual("const foo: import('./foo').Foo<import('./baz').Baz[]>")
+  })
+
+  it('test: transformCode (replace unresolved __VLS_ types with any when bundling)', () => {
+    const options = (content: string, replaceUnresolvedVLS = true) => ({
+      content,
+      filePath: '',
+      aliases: [],
+      aliasesExclude: [],
+      staticImport: false,
+      clearPureImport: false,
+      cleanVueFileName: false,
+      replaceUnresolvedVLS,
+    })
+
+    // When replaceUnresolvedVLS is true: __VLS_EmitsToProps has no local declaration -> replaced with {}
+    expect(
+      transformCode(
+        options('type T = __VLS_EmitsToProps<__VLS_NormalizeEmits<(evt: "select") => void>>;'),
+      ).content,
+    ).toEqual('type T = {};')
+
+    // When replaceUnresolvedVLS is true: keep declared __VLS_ types, replace undeclared ones
+    expect(
+      transformCode(
+        options(
+          'declare const x: __VLS_PrettifyLocal<{ a: string }> & __VLS_EmitsToProps<any>;\n' +
+            'type __VLS_PrettifyLocal<T> = { [K in keyof T as K]: T[K]; } & {};',
+        ),
+      ).content,
+    ).toEqual(
+      'declare const x: __VLS_PrettifyLocal<{ a: string }> & {};\n' +
+        'type __VLS_PrettifyLocal<T> = { [K in keyof T as K]: T[K]; } & {};',
+    )
+
+    // When replaceUnresolvedVLS is false: keep all __VLS_ types as-is
+    expect(
+      transformCode(
+        options(
+          'type T = __VLS_EmitsToProps<__VLS_NormalizeEmits<(evt: "select") => void>>;',
+          false,
+        ),
+      ).content,
+    ).toEqual('type T = __VLS_EmitsToProps<__VLS_NormalizeEmits<(evt: "select") => void>>;')
   })
 
   it('test: hasExportDefault', () => {

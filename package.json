@@ -6,17 +6,17 @@
   "author": "qmhc",
   "scripts": {
     "build": "tsx scripts/build.ts",
-    "demo:react-vite": "pnpm -C examples/react-vite build",
-    "demo:svelte-vite": "pnpm -C examples/svelte-vite build",
-    "demo:ts-esbuild": "pnpm -C examples/ts-esbuild build",
-    "demo:ts-rolldown": "pnpm -C examples/ts-rolldown build",
-    "demo:ts-rollup": "pnpm -C examples/ts-rollup build",
-    "demo:ts-rspack": "pnpm -C examples/ts-rspack build",
-    "demo:ts-vite": "pnpm -C examples/ts-vite build",
-    "demo:ts-webpack": "pnpm -C examples/ts-webpack build",
-    "demo:vue-rolldown": "pnpm -C examples/vue-rolldown build",
-    "demo:vue-rspack": "pnpm -C examples/vue-rspack build",
-    "demo:vue-vite": "pnpm -C examples/vue-vite build",
+    "demo:react-vite": "pnpm -C playground/react-vite build",
+    "demo:svelte-vite": "pnpm -C playground/svelte-vite build",
+    "demo:ts-esbuild": "pnpm -C playground/ts-esbuild build",
+    "demo:ts-rolldown": "pnpm -C playground/ts-rolldown build",
+    "demo:ts-rollup": "pnpm -C playground/ts-rollup build",
+    "demo:ts-rspack": "pnpm -C playground/ts-rspack build",
+    "demo:ts-vite": "pnpm -C playground/ts-vite build",
+    "demo:ts-webpack": "pnpm -C playground/ts-webpack build",
+    "demo:vue-rolldown": "pnpm -C playground/vue-rolldown build",
+    "demo:vue-rspack": "pnpm -C playground/vue-rspack build",
+    "demo:vue-vite": "pnpm -C playground/vue-vite build",
     "dev": "pnpm -C packages/unplugin-dts dev",
     "lint": "eslint --cache \"**/*.{js,cjs,mjs,ts,tsx,vue}\"",
     "precommit": "lint-staged -c ./.husky/.lintstagedrc -q --allow-empty",
@@ -26,13 +26,14 @@
     "postpublish": "pinst --enable",
     "publish:ci": "tsx scripts/publish.ts",
     "release": "tsx scripts/release.ts",
-    "test": "pnpm -r run test"
+    "test": "pnpm -r run test && pnpm run test:e2e",
+    "test:e2e": "vitest run -c e2e/vitest.config.ts --passWithNoTests"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.0",
     "@commitlint/types": "^19.8.0",
     "@eslint/js": "^9.31.0",
-    "@microsoft/api-extractor": "^7.57.0",
+    "@microsoft/api-extractor": "^7.57.7",
     "@rspack/core": "^1.3.9",
     "@types/debug": "^4.1.12",
     "@types/minimist": "^1.2.5",
@@ -42,8 +43,8 @@
     "@vexip-ui/commitlint-config": "^0.5.0",
     "@vexip-ui/eslint-config": "^1.3.0",
     "@vexip-ui/prettier-config": "^1.0.0",
-    "@vexip-ui/scripts": "^1.4.1",
-    "@vue/language-core": "^3.1.5",
+    "@vexip-ui/scripts": "^1.6.1",
+    "@vue/language-core": "3.1.5",
     "conventional-changelog-cli": "^5.0.0",
     "eslint": "^9.31.0",
     "execa": "^9.5.2",
@@ -62,22 +63,16 @@
     "semver": "^7.7.1",
     "tsx": "^4.19.3",
     "typescript": "5.8.3",
+    "typescript-v6": "npm:typescript@^6.0.0",
     "unbuild": "^3.5.0",
     "vite": "^6.3.3",
-    "vitest": "^3.1.2",
+    "vitest": "^4.1.5",
+    "vue-language-core-3-3": "npm:@vue/language-core@3.3.3",
     "webpack": "^5.100.2"
-  },
-  "overrides": {
-    "@microsoft/api-extractor": "^7.57.6",
-    "minimatch": "^10.2.4"
-  },
-  "resolutions": {
-    "@microsoft/api-extractor": "^7.57.6",
-    "minimatch": "^10.2.4"
   },
   "pnpm": {
     "overrides": {
-      "@microsoft/api-extractor@<7.57.6": "7.57.6",
+      "fast-uri@<3.1.2": ">=3.1.2",
       "minimatch@>=10.0.0 <10.2.3": "10.2.4"
     }
   }

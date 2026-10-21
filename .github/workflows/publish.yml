@@ -3,25 +3,29 @@ name: Publish Package
 on:
   push:
     tags:
-      - v*
+      - unplugin-dts@*
       - vite-plugin-dts@*
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   publish:
-    # if: github.repository == 'qmhc/vite-plugin-dts'
+    if: github.repository == 'qmhc/unplugin-dts'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Set node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 18.x
+          node-version: 24.x
           registry-url: https://registry.npmjs.org/
           cache: pnpm
 
@@ -34,5 +38,4 @@ jobs:
       - name: Publish package
         run: pnpm run publish:ci ${{ github.ref_name }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_OPTIONS: --max-old-space-size=4096
