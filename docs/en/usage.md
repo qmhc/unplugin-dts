@@ -273,9 +273,9 @@ pnpm i -D @microsoft/api-extractor@^7.57.7
 
 API Extractor remains optional when `bundleTypes` is disabled. Version 7.57.7 includes the
 `minimatch` fix for [CVE-2026-27903](https://github.com/advisories/GHSA-7r86-cg39-jmmj).
-Existing projects should update their API Extractor dependency and lockfile. The published
+Existing projects using bundling should update their API Extractor dependency and lockfile. The published
 peer requirement lets package managers detect unsupported versions, but can be bypassed by
-ignoring peer dependency checks. Repository-level overrides do not apply to downstream projects.
+ignoring peer dependency checks.
 
 ```ts
 export default defineConfig({

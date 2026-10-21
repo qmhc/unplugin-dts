@@ -45,14 +45,13 @@ By default, the generated declaration files are following the source structure.
 
 Fortunately, with the help of [API Extractor](https://api-extractor.com/), the plugin can bundle all types into a single file. You just need to install `@microsoft/api-extractor` version **7.57.7 or later** and set `bundleTypes: true`:
 
-Existing projects should update their API Extractor dependency and lockfile; repository-level
-overrides do not apply to projects installing this plugin.
-
 ```ts
 export default defineConfig({
   plugins: [dts({ bundleTypes: true })],
 })
 ```
+
+If your project already uses bundling, update API Extractor and refresh the lockfile.
 
 When `moduleFormat` is omitted, the plugin preserves TypeScript's declaration extensions: `.ts` → `.d.ts`, `.mts` → `.d.mts`, and `.cts` → `.d.cts`, including declaration maps.
 

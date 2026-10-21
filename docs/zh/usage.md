@@ -267,8 +267,8 @@ pnpm i -D @microsoft/api-extractor@^7.57.7
 
 未启用 `bundleTypes` 时，API Extractor 仍是可选依赖。7.57.7 版本包含了针对
 [CVE-2026-27903](https://github.com/advisories/GHSA-7r86-cg39-jmmj) 的 `minimatch` 修复。
-现有项目应更新 API Extractor 依赖及锁文件。发布包中的 peer 版本要求可帮助包管理器检测
-不受支持的版本，但忽略 peer 依赖检查会绕过此检测。本仓库中的 overrides 不会应用到下游项目。
+已经启用类型打包的项目应更新 API Extractor 依赖及锁文件。发布包中的 peer 版本要求可帮助包管理器检测
+不受支持的版本，但忽略 peer 依赖检查会绕过此检测。
 
 ```ts
 export default defineConfig({

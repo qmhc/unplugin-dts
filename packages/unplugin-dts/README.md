@@ -32,8 +32,7 @@ export default defineConfig({
 Supports Vite, Rollup, Rolldown, Webpack, Rspack and Esbuild.
 
 When using `bundleTypes`, install `@microsoft/api-extractor` version **7.57.7 or later**.
-Existing projects should update their API Extractor dependency and lockfile; repository-level
-overrides do not apply to projects installing this plugin.
+If your project already uses bundling, update API Extractor and refresh the lockfile.
 
 When `moduleFormat` is omitted, the plugin preserves TypeScript's declaration extensions: `.ts` → `.d.ts`, `.mts` → `.d.mts`, and `.cts` → `.d.cts`, including declaration maps.
 
