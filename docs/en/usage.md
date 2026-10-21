@@ -265,11 +265,17 @@ existing watched module, or restart the watcher after adding, deleting, or renam
 
 By default, the generated declaration files follow the source structure.
 
-With the help of [API Extractor](https://api-extractor.com/), the plugin can bundle all types into a single file. You just need to install `@microsoft/api-extractor` and set `bundleTypes: true`:
+With the help of [API Extractor](https://api-extractor.com/), the plugin can bundle all types into a single file. You just need to install `@microsoft/api-extractor` version **7.57.7 or later** and set `bundleTypes: true`:
 
 ```sh
-pnpm i -D @microsoft/api-extractor
+pnpm i -D @microsoft/api-extractor@^7.57.7
 ```
+
+API Extractor remains optional when `bundleTypes` is disabled. Version 7.57.7 includes the
+`minimatch` fix for [CVE-2026-27903](https://github.com/advisories/GHSA-7r86-cg39-jmmj).
+Existing projects using bundling should update their API Extractor dependency and lockfile. The published
+peer requirement lets package managers detect unsupported versions, but can be bypassed by
+ignoring peer dependency checks.
 
 ```ts
 export default defineConfig({

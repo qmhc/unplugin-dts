@@ -130,7 +130,7 @@
     "unplugin": "^2.3.2"
   },
   "peerDependencies": {
-    "@microsoft/api-extractor": ">=7",
+    "@microsoft/api-extractor": ">=7.57.7",
     "@rspack/core": "^1",
     "@vue/language-core": "^3.1.5",
     "esbuild": "*",
