@@ -152,14 +152,18 @@ export interface CreateRuntimeOptions {
    */
   compilerOptions?: ts.CompilerOptions | null,
   /**
-   * Parsing `paths` of tsconfig.json to aliases.
-   *
-   * Note that these aliases only use for declaration files.
+   * 根据 TypeScript 实际解析的 paths 目标改写声明引用，支持候选路径回退。
    *
    * @default true
-   * @remarks Only use first replacement of each path.
    */
   pathsToAliases?: boolean,
+  /**
+   * 根据 TypeScript 实际解析的 package.json imports 目标改写内部声明引用。
+   * 外部依赖和未生成声明的目标保留原引用。
+   *
+   * @default true
+   */
+  importsToAlias?: boolean,
   /**
    * Override `include` glob (relative to root).
    *

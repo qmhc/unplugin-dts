@@ -64,72 +64,33 @@ describe('runtime tests', () => {
     expect(isCanonicalPathEqualOrInside('/other/src', '/project')).toBe(false)
   })
 
-  it('should resolve paths relative to tsconfig dir when baseUrl is absent', async () => {
-    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
-
-    writeFileSync(
-      resolve(tempDir, 'tsconfig.json'),
-      JSON.stringify({
-        compilerOptions: {
-          paths: {
-            '@/*': ['./src/*'],
+  it.each([undefined, './lib'])(
+    'should resolve paths against the configured baseUrl (%s)',
+    async baseUrl => {
+      tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+      const sourceDir = baseUrl ? 'lib/src' : 'src'
+      writeFileSync(
+        resolve(tempDir, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: {
+            module: 'ESNext',
+            moduleResolution: 'bundler',
+            baseUrl,
+            paths: { '*': ['./missing/*'], '@/*': ['./src/*'] },
           },
-        },
-        include: ['src/**/*'],
-      }),
-    )
-
-    mkdirSync(resolve(tempDir, 'src'))
-    writeFileSync(resolve(tempDir, 'src', 'index.ts'), 'export const foo = 1\n')
-    writeFileSync(resolve(tempDir, 'src', 'helper.ts'), 'export const bar = 2\n')
-
-    const runtime = await Runtime.toInstance({
-      root: tempDir,
-      tsconfigPath: 'tsconfig.json',
-      pathsToAliases: true,
-    })
-
-    const alias = (runtime as any).aliases.find((a: any) =>
-      typeof a.find === 'string' ? a.find === '@/' : a.find.test('@/helper'),
-    )
-
-    expect(alias).toBeDefined()
-    expect(normalizePath(alias!.replacement)).toBe(normalizePath(resolve(tempDir, 'src/$1')))
-  })
-
-  it('should resolve @/* alias when wildcard * path is also present', async () => {
-    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
-
-    writeFileSync(
-      resolve(tempDir, 'tsconfig.json'),
-      JSON.stringify({
-        compilerOptions: {
-          paths: {
-            '*': ['./src/*'],
-            '@/*': ['./src/*'],
-          },
-        },
-        include: ['src/**/*'],
-      }),
-    )
-
-    mkdirSync(resolve(tempDir, 'src'))
-    writeFileSync(resolve(tempDir, 'src', 'index.ts'), 'export const foo = 1\n')
-    writeFileSync(resolve(tempDir, 'src', 'helper.ts'), 'export const bar = 2\n')
-
-    const runtime = await Runtime.toInstance({
-      root: tempDir,
-      tsconfigPath: 'tsconfig.json',
-      pathsToAliases: true,
-    })
-
-    const atAlias = (runtime as any).aliases.find((a: any) =>
-      typeof a.find === 'string' ? a.find === '@/' : a.find.test('@/helper'),
-    )
-
-    expect(atAlias).toBeDefined()
-    expect(normalizePath(atAlias!.replacement)).toBe(normalizePath(resolve(tempDir, 'src/$1')))
-  })
+          include: [`${sourceDir}/**/*`],
+        }),
+      )
+      mkdirSync(resolve(tempDir, sourceDir), { recursive: true })
+      writeFileSync(resolve(tempDir, sourceDir, 'index.ts'), "export { bar } from '@/helper'\n")
+      writeFileSync(resolve(tempDir, sourceDir, 'helper.ts'), 'export const bar = 2\n')
+      const runtime = await Runtime.toInstance({ root: tempDir, pathsToAliases: true })
+      await runtime.emitOutput()
+      expect(readFileSync(resolve(tempDir, 'dist/index.d.ts'), 'utf8')).toContain(
+        "from './helper.js'",
+      )
+    },
+  )
 
   it('should include .vue files when using glob patterns with processor vue', async () => {
     tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
@@ -720,11 +681,7 @@ defineProps<{ msg: ${type} }>()
     expect(runtime.getHost()).not.toBe(previousHost)
     expect(runtime.getProgram().getSourceFile(normalizePath(initialPath))).toBeUndefined()
     expect(runtime.getProgram().getSourceFile(normalizePath(extraPath))).toBeDefined()
-    expect(
-      (runtime as any).aliases.some((alias: any) =>
-        typeof alias.find === 'string' ? alias.find === '#/' : alias.find.test('#/extra'),
-      ),
-    ).toBe(true)
+    expect(runtime.getProgram().getCompilerOptions().paths).toEqual({ '#/*': ['./extra/*'] })
   })
 
   it('should reuse an updated external declaration and watch it', async () => {
@@ -868,39 +825,6 @@ defineProps<{ msg: ${type} }>()
     const rebuiltDeclarations = emitDeclarations(runtime.getProgram())
     expect(rebuiltDeclarations).toEqual(emitDeclarations(freshRuntime.getProgram()))
     expect(rebuiltDeclarations).not.toEqual(previousDeclarations)
-  })
-
-  it('should use baseUrl when explicitly set', async () => {
-    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
-
-    writeFileSync(
-      resolve(tempDir, 'tsconfig.json'),
-      JSON.stringify({
-        compilerOptions: {
-          baseUrl: './lib',
-          paths: {
-            '@/*': ['./src/*'],
-          },
-        },
-        include: ['lib/src/**/*'],
-      }),
-    )
-
-    mkdirSync(resolve(tempDir, 'lib', 'src'), { recursive: true })
-    writeFileSync(resolve(tempDir, 'lib', 'src', 'index.ts'), 'export const foo = 1\n')
-
-    const runtime = await Runtime.toInstance({
-      root: tempDir,
-      tsconfigPath: 'tsconfig.json',
-      pathsToAliases: true,
-    })
-
-    const alias = (runtime as any).aliases.find((a: any) =>
-      typeof a.find === 'string' ? a.find === '@/' : a.find.test('@/helper'),
-    )
-
-    expect(alias).toBeDefined()
-    expect(normalizePath(alias!.replacement)).toBe(normalizePath(resolve(tempDir, 'lib/src/$1')))
   })
 
   it('should not create self-referencing synthetic entry when entry dts path equals types path', async () => {

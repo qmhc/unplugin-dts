@@ -2,7 +2,7 @@
 
 exports[`ts-rollup > should match snapshot for dist/index.d.ts 1`] = `
 "import { default as data } from './data.json';
-import { TestBase } from './test';
+import { TestBase } from './test.js';
 import { DynamicImportType } from './dynamic';
 import { DynamicImportType2 } from './dynamic2';
 export declare const dy: DynamicImportType;
@@ -19,10 +19,10 @@ export { ParametersTest, test, method } from './test';
 export { data };
 export default data;
 export type { User as MyUser } from './types';
-export type { AliasType } from './alias/type';
+export type { AliasType } from './alias/type.js';
 export type * from './namespace';
 export type * from './modules';
-declare module './test' {
+declare module './test.js' {
     interface TestBase {
         name: string;
         mail?: string;

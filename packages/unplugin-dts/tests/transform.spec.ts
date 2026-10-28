@@ -9,10 +9,26 @@ import {
   transformModuleSpecifiers,
 } from '../src/core/transform'
 import { parseTsAliases } from '../src/core/utils'
+import ts from '../src/core/ts-loader.cjs'
 
 import type { Alias } from 'vite'
 
 describe('transform tests', () => {
+  it('should retain reference context when resolving declaration aliases', () => {
+    const content = transformCode({
+      filePath: '/src/index.d.ts',
+      content: "import { A } from '#dep'; import B = require('#dep'); export { A, B }",
+      aliases: [],
+      aliasesExclude: [],
+      staticImport: false,
+      clearPureImport: false,
+      cleanVueFileName: false,
+      resolveModuleSpecifier: node =>
+        ts.isExternalModuleReference(node.parent) ? './dep.cjs' : './dep.mjs',
+    }).content
+    expect(content).toContain("from './dep.mjs'")
+    expect(content).toContain("require('./dep.cjs')")
+  })
   it('test: normalizeGlob', () => {
     expect(normalizeGlob('')).toEqual('/**')
     expect(normalizeGlob('/')).toEqual('/**')
