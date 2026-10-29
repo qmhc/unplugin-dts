@@ -8,6 +8,7 @@ import { createFilter } from '@rollup/pluginutils'
 import { compare } from 'compare-versions'
 import { green, yellow } from 'kolorist'
 import { loadProgramProcessor } from './processor'
+import { createDeclarationModuleResolver } from './module-resolver'
 import { createApiExtractorProvider, getHasExtractor, normalizeProvider } from './providers'
 import { JsonResolver, SvelteResolver, VueResolver, parseResolvers } from './resolvers'
 import {
@@ -37,7 +38,6 @@ import {
   jsRE,
   normalizeOutDirs,
   normalizePath,
-  parseTsAliases,
   queryPublicPath,
   removeDirIfEmpty,
   resolve,
@@ -231,6 +231,9 @@ export class Runtime {
   // protected exclude: string[]
   protected aliases: Alias[]
   protected aliasesExclude: (string | RegExp)[]
+  protected pathsToAliases: boolean
+  protected importsToAlias: boolean
+  protected declarationSources: Map<string, readonly string[]>
   protected libName: string
   protected indexName: string
   protected logger: Logger
@@ -242,6 +245,7 @@ export class Runtime {
   private programSourceFilesByCanonicalName: Map<string, ts.SourceFile> | undefined
   private watchDirectoryNames: Set<string> | undefined
   private watchTargets: RuntimeWatchTargets | undefined
+  private packageJsonPaths: Set<string> | undefined
 
   readonly filter: (id: string) => boolean
   readonly rebuildProgram: () => void
@@ -252,7 +256,8 @@ export class Runtime {
       root,
       tsconfigPath,
       aliasesExclude = [],
-      pathsToAliases,
+      pathsToAliases = true,
+      importsToAlias = true,
       entries = {},
       logger = console,
     } = options
@@ -300,24 +305,6 @@ export class Runtime {
     )
 
     const outDirs = normalizeOutDirs(options.outDirs, root, defaultOutDir)
-
-    const { baseUrl, paths } = compilerOptions
-
-    // When `paths` is used without `baseUrl` in tsconfig.json, TypeScript 5.4+
-    // resolves paths relative to the containing directory of tsconfig.json.
-    const resolvedBaseUrl = baseUrl ?? (paths && configPath ? dirname(configPath) : root)
-
-    if (pathsToAliases && resolvedBaseUrl && paths) {
-      aliases.push(
-        ...parseTsAliases(
-          ensureAbsolute(
-            resolveConfigDir(resolvedBaseUrl, root),
-            configPath ? dirname(configPath) : root,
-          ),
-          paths,
-        ),
-      )
-    }
 
     const computeGlobs = (
       rootGlobs: string | string[] | undefined,
@@ -443,6 +430,9 @@ export class Runtime {
     // this.exclude = exclude
     this.aliases = aliases
     this.aliasesExclude = aliasesExclude
+    this.pathsToAliases = pathsToAliases
+    this.importsToAlias = importsToAlias
+    this.declarationSources = new Map()
     this.libName = libName
     this.indexName = indexName
     this.logger = logger
@@ -492,6 +482,7 @@ export class Runtime {
       this.programSourceFilesByCanonicalName = undefined
       this.watchDirectoryNames = undefined
       this.watchTargets = undefined
+      this.packageJsonPaths = undefined
     }
     runtimeInternals.set(this, {
       runtimeOptions: options,
@@ -634,6 +625,7 @@ export class Runtime {
       this.programSourceFilesByCanonicalName = undefined
       this.watchDirectoryNames = undefined
       this.watchTargets = undefined
+      this.packageJsonPaths = undefined
       this.refreshDiagnostics()
     }
     this.releaseRemovedProgramSourceFiles(previousProgram)
@@ -672,6 +664,7 @@ export class Runtime {
     this.programSourceFilesByCanonicalName = undefined
     this.watchDirectoryNames = undefined
     this.watchTargets = undefined
+    this.packageJsonPaths = undefined
     this.refreshDiagnostics()
     this.releaseRemovedProgramSourceFiles(previousProgram)
     this.measureProgramReuse(previousProgram, 'fresh', reason, {
@@ -740,6 +733,7 @@ export class Runtime {
     this.programSourceFilesByCanonicalName = undefined
     this.watchDirectoryNames = undefined
     this.watchTargets = undefined
+    this.packageJsonPaths = undefined
     this.refreshDiagnostics()
     this.measureProgramReuse(previousProgram, 'incremental', 'source-update', previousCacheStats)
     return this.getChangedProgramSourceFiles(changes)
@@ -777,9 +771,42 @@ export class Runtime {
 
   private isConfigFile(fileName: string) {
     return (
-      !!this.configPath &&
-      this.getCanonicalFileName(fileName) === this.getCanonicalFileName(this.configPath)
+      (!!this.configPath &&
+        this.getCanonicalFileName(fileName) === this.getCanonicalFileName(this.configPath)) ||
+      (this.importsToAlias &&
+        basename(fileName) === 'package.json' &&
+        [...this.getPackageJsonPaths()].some(
+          path => this.getCanonicalFileName(path) === this.getCanonicalFileName(fileName),
+        ))
     )
+  }
+
+  /** 跟踪本地源码的包作用域，同时保留中间目录以识别新建的 package.json。 */
+  private getPackageJsonPaths() {
+    if (this.packageJsonPaths) return this.packageJsonPaths
+    const paths = new Set<string>()
+    this.packageJsonPaths = paths
+    if (!this.importsToAlias) return paths
+
+    for (const source of this.program.getSourceFiles()) {
+      if (
+        this.program.isSourceFileDefaultLibrary(source) ||
+        this.program.isSourceFileFromExternalLibrary(source)
+      )
+        continue
+
+      let directory = dirname(source.fileName)
+      while (true) {
+        const path = resolve(directory, 'package.json')
+        if (paths.has(path)) break
+        paths.add(path)
+        if (this.host.fileExists(path)) break
+        const parent = dirname(directory)
+        if (parent === directory) break
+        directory = parent
+      }
+    }
+    return paths
   }
 
   private shouldHandleWatchChange(fileName: string) {
@@ -801,6 +828,9 @@ export class Runtime {
       directories.add(directory)
     }
     if (this.configPath) files.add(normalizePath(this.configPath))
+    for (const path of this.getPackageJsonPaths()) {
+      if (this.host.fileExists(path)) files.add(path)
+    }
 
     const { programProcessor } = getRuntimeInternals(this)
     for (const sourceFile of this.program.getSourceFiles()) {
@@ -891,8 +921,15 @@ export class Runtime {
     return [...this.diagnostics]
   }
 
+  /** 收集声明及其来源，后续按真实产物路径转换模块引用。 */
+  protected collectOutput(path: string, content: string, sources: readonly string[]) {
+    path = normalizePath(path)
+    this.outputFiles.set(path, content)
+    if (dtsRE.test(path)) this.declarationSources.set(path, sources.map(normalizePath))
+  }
+
   async transform(id: string, code: string) {
-    const { publicRoot, outDirs, resolvers, rootFiles, outputFiles, transformedFiles } = this
+    const { publicRoot, outDirs, resolvers, rootFiles, transformedFiles } = this
 
     let resolver: Resolver | undefined
     id = normalizePath(id).split('?')[0]
@@ -939,9 +976,10 @@ export class Runtime {
       }
 
       for (const { path, content } of outputs) {
-        outputFiles.set(
+        this.collectOutput(
           resolve(publicRoot, relative(outDir, ensureAbsolute(path, outDir))),
           content,
+          [id],
         )
       }
     } else {
@@ -950,10 +988,11 @@ export class Runtime {
       if (sourceFile) {
         const { emitSkipped, diagnostics } = this.program.emit(
           sourceFile,
-          (name, text) => {
-            outputFiles.set(
+          (name, text, _bom, _onError, sources) => {
+            this.collectOutput(
               resolve(publicRoot, relative(outDir, ensureAbsolute(name, outDir))),
               text,
+              sources?.map(source => source.fileName) ?? [sourceFile.fileName],
             )
           },
           undefined,
@@ -972,7 +1011,9 @@ export class Runtime {
 
     dtsSourceFile &&
       this.filter(dtsSourceFile.fileName) &&
-      outputFiles.set(normalizePath(dtsSourceFile.fileName), dtsSourceFile.getFullText())
+      this.collectOutput(dtsSourceFile.fileName, dtsSourceFile.getFullText(), [
+        dtsSourceFile.fileName,
+      ])
   }
 
   async emitOutput(options: EmitOptions = {}) {
@@ -1104,16 +1145,17 @@ export class Runtime {
       if (!this.filter(sourceFile.fileName)) continue
 
       if ((copyDtsFiles || bundleTypes) && dtsRE.test(sourceFile.fileName)) {
-        outputFiles.set(normalizePath(sourceFile.fileName), sourceFile.getFullText())
+        this.collectOutput(sourceFile.fileName, sourceFile.getFullText(), [sourceFile.fileName])
       }
 
       if (rootFiles.has(sourceFile.fileName)) {
         this.program.emit(
           sourceFile,
-          (name, text) => {
-            outputFiles.set(
+          (name, text, _bom, _onError, sources) => {
+            this.collectOutput(
               resolve(publicRoot, relative(outDir, ensureAbsolute(name, outDir))),
               text,
+              sources?.map(source => source.fileName) ?? [sourceFile.fileName],
             )
           },
           undefined,
@@ -1230,6 +1272,18 @@ export class Runtime {
       return fullRelativeRE.test(specifier) ? specifier : `./${specifier}`
     }
 
+    const resolveDeclarationModule =
+      this.pathsToAliases || this.importsToAlias
+        ? createDeclarationModuleResolver(
+          this.program,
+          this.host,
+          declarationFiles,
+          this.declarationSources,
+          this.pathsToAliases,
+          this.importsToAlias,
+        )
+        : undefined
+
     const createCanonicalSpecifierTransform = (
       importerSourcePath: string,
       targetOutDirConfig: NormalizedOutDir,
@@ -1279,6 +1333,19 @@ export class Runtime {
             clearPureImport,
             cleanVueFileName,
             replaceUnresolvedVLS: !!bundleTypes,
+            resolveModuleSpecifier: resolveDeclarationModule
+              ? specifier => {
+                const target = resolveDeclarationModule(filePath, specifier)
+                if (!target) return
+                return toRuntimeModuleSpecifier(
+                  transformDtsPath(newFilePath, intermediateDtsExtension),
+                  transformDtsPath(
+                    resolve(outDir, getOutputRelativePath(target)),
+                    intermediateDtsExtension,
+                  ),
+                )
+              }
+              : undefined,
             transformModuleSpecifier: rewritePrimarySpecifiers
               ? createCanonicalSpecifierTransform(filePath, primaryOutDirConfig)
               : undefined,
