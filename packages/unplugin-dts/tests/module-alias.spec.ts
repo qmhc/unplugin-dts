@@ -11,6 +11,7 @@ import {
   rebuildRuntimeProgram,
 } from '../src/core/runtime'
 import ts from '../src/core/ts-loader.cjs'
+import { normalizePath } from '../src/core/utils'
 
 import type { CreateRuntimeOptions } from '../src/core/types'
 
@@ -102,7 +103,8 @@ const invalid: Item = { value: 1 }
       const fileExists = host.fileExists.bind(host)
       const readFile = host.readFile.bind(host)
       // 模拟发布包不包含源码，防止错误引用被本地 src 掩盖。
-      const isSource = (path: string) => path.startsWith(resolve(root, 'src') + '/')
+      const sourceDirectory = normalizePath(resolve(root, 'src')) + '/'
+      const isSource = (path: string) => normalizePath(path).startsWith(sourceDirectory)
       host.fileExists = path => !isSource(path) && fileExists(path)
       host.readFile = path => (isSource(path) ? undefined : readFile(path))
       const consumer = ts.createProgram([resolve(root, 'consumer.mts')], options, host)
@@ -241,7 +243,7 @@ export type { Platform } from '#platform'`,
     })
     const runtime = await create()
     const packagePath = resolve(root, 'package.json')
-    expect(getRuntimeWatchTargets(runtime).files).toContain(packagePath)
+    expect(getRuntimeWatchTargets(runtime).files).toContain(normalizePath(packagePath))
     expect(isRuntimeConfigFile(runtime, packagePath)).toBe(true)
     await runtime.emitOutput()
     expect(read()).toContain("from './item.js'")

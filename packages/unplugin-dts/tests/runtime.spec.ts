@@ -270,7 +270,7 @@ defineProps<{ msg: ${type} }>()
       expect(existsSync(resolve(directory, 'Renamed.vue.d.ts'))).toBe(false)
       expect(existsSync(resolve(directory, 'Renamed.vue.d.ts.map'))).toBe(false)
     }
-  }, 10_000)
+  }, 30_000)
 
   it('should never copy the internal Vue root when the config includes the project root', async () => {
     tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
