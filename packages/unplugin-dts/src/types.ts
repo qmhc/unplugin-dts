@@ -49,6 +49,7 @@ export interface PluginInstance {
 
 /**
  * 插件配置；outDirs 未指定 moduleFormat 时保留 TypeScript 原始声明后缀。
+ * pathsToAliases 与 importsToAlias 默认开启，按 TypeScript 解析结果转换内部声明引用。
  */
 export interface PluginOptions
   extends Omit<Partial<CreateRuntimeOptions>, 'entries' | 'libName' | 'indexName' | 'logger'>,

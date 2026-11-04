@@ -111,10 +111,11 @@ export function transformCode(options: {
   clearPureImport: boolean,
   cleanVueFileName: boolean,
   replaceUnresolvedVLS?: boolean,
+  resolveModuleSpecifier?: (specifier: ts.StringLiteral) => string | undefined,
   transformModuleSpecifier?: (specifier: string) => string,
 }) {
   const s = new MagicString(options.content)
-  const ast = ts.createSourceFile('a.ts', options.content, ts.ScriptTarget.Latest)
+  const ast = ts.createSourceFile('a.ts', options.content, ts.ScriptTarget.Latest, true)
 
   const dir = dirname(options.filePath)
 
@@ -122,8 +123,17 @@ export function transformCode(options: {
   const usedDefault = new Map<string, string>()
   const declareModules: string[] = []
 
-  const toLibName = (origin: string) => {
+  const toLibName = (specifier: ts.StringLiteral) => {
+    const origin = specifier.text
     let name = transformAlias(origin, dir, options.aliases, options.aliasesExclude)
+
+    // 显式别名优先；排除规则同时约束自动解析的 paths 和 imports。
+    if (
+      name === origin &&
+      !options.aliasesExclude.some(e => (isRegExp(e) ? e.test(origin) : e === origin))
+    ) {
+      name = options.resolveModuleSpecifier?.(specifier) ?? name
+    }
 
     if (options.cleanVueFileName) {
       name = name.replace(/\.vue$/, '')
@@ -174,7 +184,7 @@ export function transformCode(options: {
         if (options.clearPureImport) {
           s.remove(node.pos, node.end)
         } else if (ts.isStringLiteral(node.moduleSpecifier)) {
-          const libName = toLibName(node.moduleSpecifier.text)
+          const libName = toLibName(node.moduleSpecifier)
           if (libName !== node.moduleSpecifier.text) {
             s.update(node.moduleSpecifier.pos, node.moduleSpecifier.end, ` '${libName}'`)
           }
@@ -185,7 +195,7 @@ export function transformCode(options: {
         (node.importClause.name ||
           (node.importClause.namedBindings && ts.isNamedImports(node.importClause.namedBindings)))
       ) {
-        const libName = toLibName(node.moduleSpecifier.text)
+        const libName = toLibName(node.moduleSpecifier)
         const importSet =
           importMap.get(libName) ?? importMap.set(libName, new Set<string>()).get(libName)!
 
@@ -213,7 +223,7 @@ export function transformCode(options: {
         node.importClause.namedBindings &&
         ts.isNamespaceImport(node.importClause.namedBindings)
       ) {
-        const libName = toLibName(node.moduleSpecifier.text)
+        const libName = toLibName(node.moduleSpecifier)
 
         if (libName !== node.moduleSpecifier.text) {
           s.update(node.moduleSpecifier.pos, node.moduleSpecifier.end, ` '${libName}'`)
@@ -241,7 +251,7 @@ export function transformCode(options: {
       ts.isLiteralTypeNode(node.argument) &&
       ts.isStringLiteral(node.argument.literal)
     ) {
-      const libName = toLibName(node.argument.literal.text)
+      const libName = toLibName(node.argument.literal)
 
       if (!options.staticImport || !node.qualifier || !ts.isIdentifier(node.qualifier)) {
         s.update(node.argument.literal.pos, node.argument.literal.end, `'${libName}'`)
@@ -288,7 +298,7 @@ export function transformCode(options: {
       ts.isStringLiteral(node.moduleReference.expression)
     ) {
       const specifier = node.moduleReference.expression
-      const libName = toLibName(specifier.text)
+      const libName = toLibName(specifier)
 
       if (libName !== specifier.text) {
         s.update(specifier.pos, specifier.end, `'${libName}'`)
@@ -302,11 +312,7 @@ export function transformCode(options: {
       node.expression.kind === ts.SyntaxKind.ImportKeyword &&
       ts.isStringLiteral(node.arguments[0])
     ) {
-      s.update(
-        node.arguments[0].pos,
-        node.arguments[0].end,
-        `'${toLibName(node.arguments[0].text)}'`,
-      )
+      s.update(node.arguments[0].pos, node.arguments[0].end, `'${toLibName(node.arguments[0])}'`)
 
       return false
     }
@@ -319,7 +325,7 @@ export function transformCode(options: {
       s.update(
         node.moduleSpecifier.pos,
         node.moduleSpecifier.end,
-        ` '${toLibName(node.moduleSpecifier.text)}'`,
+        ` '${toLibName(node.moduleSpecifier)}'`,
       )
 
       return false
@@ -335,7 +341,7 @@ export function transformCode(options: {
       } else {
         let libName = ''
         if (ts.isStringLiteral(node.name)) {
-          libName = toLibName(node.name.text)
+          libName = toLibName(node.name)
 
           if (libName !== node.name.text) {
             s.update(node.name.pos, node.name.end, ` '${libName}'`)

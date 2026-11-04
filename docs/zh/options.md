@@ -141,18 +141,22 @@ outDirs: [
 - **类型：** `boolean`
 - **默认值：** `true`
 
-解析 `tsconfig.json` 中的 `paths` 作为别名。
+将声明文件中通过 `tsconfig.json` 的 `paths` 配置的别名替换为相对路径，支持按顺序查找多个候选路径。仅转换已输出对应声明文件的项目内引用。
 
-`baseUrl` 优先取自 `compilerOptions.baseUrl`；若未设置，则回退到 `tsconfig.json` 所在目录（兼容 TS 5.4+）或 `root`。每个路径键会被转为正则表达式用于匹配。
+### `importsToAlias`
 
-> **已知限制**
-> 只使用每个路径的第一个替换字符串。例如 `"@/*": ["src/*", "lib/*"]` 只会为 `src/*` 生成别名。
+- **类型：** `boolean`
+- **默认值：** `true`
+
+将声明文件中通过 `package.json` 的 `imports` 配置的 `#` 别名替换为相对路径。仅转换已输出对应声明文件的项目内引用。
+
+需要 `moduleResolution` 为 `node16`、`nodenext` 或 `bundler`，并启用 `resolvePackageJsonImports`。若别名通过 `paths` 解析，则由 [`pathsToAliases`](#pathstoaliases) 控制。
 
 ### `aliases`
 
 - **类型：** `AliasOptions`
 
-为类型文件指定额外的别名映射。这些别名会与 `pathsToAliases` 解析出的别名合并，且**自定义别名优先级更高**，因为它们在解析数组中排在前面。
+为声明文件指定额外的别名映射，优先于 `pathsToAliases` 和 `importsToAlias` 的自动转换。
 
 ```ts
 type AliasOptions =
@@ -165,11 +169,9 @@ type AliasOptions =
 - **类型：** `(string | RegExp)[]`
 - **默认值：** `[]`
 
-设置在转换别名时需要排除的项。排除规则匹配的是别名的 **`find` 模式**，而不是解析后的文件路径：
+设置不转换的别名，适用于 `aliases`、`pathsToAliases` 和 `importsToAlias`。按原始引用匹配：字符串精确匹配，正则表达式按模式匹配。
 
-- 若 `find` 是正则：比较 `find.toString()` 与排除项。
-- 若排除项是正则：测试 `find.match(排除项)`。
-- 若两者都是字符串：精确匹配。
+对于 `aliases`，还会匹配规则的 `find` 值；`find` 为正则时，比较其字符串形式。
 
 ---
 

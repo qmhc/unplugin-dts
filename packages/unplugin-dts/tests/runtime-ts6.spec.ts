@@ -23,6 +23,41 @@ describe('runtime tests (TypeScript 6)', () => {
     }
   })
 
+  it('should resolve imports and fallback paths with the implicit TS 6 rootDir', async () => {
+    tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
+    mkdirSync(resolve(tempDir, 'src'))
+    writeFileSync(
+      resolve(tempDir, 'package.json'),
+      JSON.stringify({
+        type: 'module',
+        imports: { '#src/*': './src/*.js' },
+      }),
+    )
+    writeFileSync(
+      resolve(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          types: [],
+          paths: { '@/*': ['./missing/*', './src/*'] },
+        },
+        include: ['src/**/*'],
+      }),
+    )
+    writeFileSync(
+      resolve(tempDir, 'src/index.ts'),
+      "export type { Item as A } from '#src/item'; export type { Item as B } from '@/item'",
+    )
+    writeFileSync(resolve(tempDir, 'src/item.ts'), 'export interface Item { value: string }')
+    const runtime = await Runtime.toInstance({ root: tempDir })
+    expect(runtime.getDiagnostics().map(d => d.messageText)).toEqual([])
+    await runtime.emitOutput()
+    const content = readFileSync(resolve(tempDir, 'dist/index.d.ts'), 'utf8')
+    expect(content).toContain("from './item.js'")
+    expect(content).not.toMatch(/#src|@\//)
+  })
+
   it('should emit to dist/index.d.ts not dist/src/index.d.ts when rootDir is not explicitly set', async () => {
     tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
 

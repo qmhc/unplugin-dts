@@ -143,18 +143,22 @@ Resolver outputs should use paths based on `outDir` or relative to `root`. See [
 - **Type:** `boolean`
 - **Default:** `true`
 
-Parse the `paths` option from `tsconfig.json` into aliases for declaration file transformation.
+Replace aliases configured in `tsconfig.json` `paths` with relative paths in declaration files, trying multiple candidate paths in order. Only references to project files with corresponding declaration output are converted.
 
-The `baseUrl` is resolved from `compilerOptions.baseUrl`; if absent, it falls back to the directory of `tsconfig.json` (for TS 5.4+ compatibility), or `root`. Each path key is converted to a RegExp for matching.
+### `importsToAlias`
 
-> **Known Limitations**
-> Only the first replacement string of each path is used. So `"@/*": ["src/*", "lib/*"]` will only produce the alias for `src/*`.
+- **Type:** `boolean`
+- **Default:** `true`
+
+Replace `#` aliases configured in `package.json` `imports` with relative paths in declaration files. Only references to project files with corresponding declaration output are converted.
+
+Requires `moduleResolution: 'node16'`, `'nodenext'` or `'bundler'`, with `resolvePackageJsonImports` enabled. Aliases resolved through `paths` are controlled by [`pathsToAliases`](#pathstoaliases).
 
 ### `aliases`
 
 - **Type:** `AliasOptions`
 
-Specify additional alias mappings for declaration files. These are merged with tsconfig-derived aliases (when `pathsToAliases` is true), and **custom aliases take precedence** because they are placed earlier in the resolution array.
+Specify additional alias mappings for declaration files. These take precedence over automatic `pathsToAliases` and `importsToAlias` conversion.
 
 ```ts
 type AliasOptions =
@@ -167,11 +171,9 @@ type AliasOptions =
 - **Type:** `(string | RegExp)[]`
 - **Default:** `[]`
 
-Exclude specific aliases from transformation. The exclusion matches the alias **`find` pattern**, not the resolved file path:
+Exclude aliases from conversion. Applies to `aliases`, `pathsToAliases` and `importsToAlias`. Strings match the original reference exactly; regular expressions match by pattern.
 
-- If `find` is a RegExp: compares `find.toString()` against the exclude pattern.
-- If the exclude is a RegExp: tests `find.match(exclude)`.
-- If both are strings: exact match.
+For `aliases`, exclusions also match each rule's `find` value. Regular expression `find` values are compared by their string representation.
 
 ---
 
