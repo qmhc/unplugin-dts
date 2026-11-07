@@ -46,6 +46,9 @@ export default defineConfig({
 
 支持 Vite、Rollup、Rolldown、Webpack、Rspack 和 Esbuild。详细的构建工具配置请查看[使用文档](./docs/zh/usage.md)。
 
+使用 `bundleTypes` 时，需要安装 **7.57.7 或更高版本**的 `@microsoft/api-extractor`。
+如果项目已经启用类型打包，请更新 API Extractor 及锁文件。
+
 未指定 `moduleFormat` 时，插件保留 TypeScript 的声明后缀：`.ts` → `.d.ts`、`.mts` → `.d.mts`、`.cts` → `.d.cts`，声明 map 也保持对应后缀。
 
 声明 map 中的绝对 `file://` 源文件 URL（包括 Windows 跨盘路径）会在所有输出目录中原样保留。

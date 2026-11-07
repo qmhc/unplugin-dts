@@ -259,11 +259,16 @@ Rolldown 当前无法通过目录 `addWatchFile` 发现 watch 启动后创建的
 
 默认情况下，生成的类型文件会跟随源文件的结构。
 
-插件借助 [API Extractor](https://api-extractor.com/) 提供了将所有类型汇总到单个文件的能力，你只需安装 `@microsoft/api-extractor` 并指定 `bundleTypes: true`：
+插件借助 [API Extractor](https://api-extractor.com/) 提供了将所有类型汇总到单个文件的能力，你只需安装 **7.57.7 或更高版本**的 `@microsoft/api-extractor` 并指定 `bundleTypes: true`：
 
 ```sh
-pnpm i -D @microsoft/api-extractor
+pnpm i -D @microsoft/api-extractor@^7.57.7
 ```
+
+未启用 `bundleTypes` 时，API Extractor 仍是可选依赖。7.57.7 版本包含了针对
+[CVE-2026-27903](https://github.com/advisories/GHSA-7r86-cg39-jmmj) 的 `minimatch` 修复。
+已经启用类型打包的项目应更新 API Extractor 依赖及锁文件。发布包中的 peer 版本要求可帮助包管理器检测
+不受支持的版本，但忽略 peer 依赖检查会绕过此检测。
 
 ```ts
 export default defineConfig({
