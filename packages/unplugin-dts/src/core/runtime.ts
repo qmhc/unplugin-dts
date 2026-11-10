@@ -130,6 +130,44 @@ function getDiagnostics(program: ts.Program) {
   ]
 }
 
+/**
+ * Module resolution probes the same paths thousands of times while building a Program, so cache
+ * existence checks for the duration of each `createProgram` call, as tsc does.
+ */
+function withCachedHostLookups(processor: ProgramProcessor): ProgramProcessor {
+  const createProgram = ((options: ts.CreateProgramOptions) => {
+    const host = options.host
+    if (!host) return processor.createProgram(options)
+
+    const { fileExists, directoryExists } = host
+    // cleared once the call returns, so wrappers a processor kept (Vue copies the host) hit the disk again
+    let cache: Map<string, boolean> | undefined = new Map()
+    const cached = (kind: string, lookup: (path: string) => boolean) => (path: string) => {
+      if (!cache) return lookup.call(host, path)
+
+      let result = cache.get(kind + path)
+      if (result === undefined) {
+        result = lookup.call(host, path)
+        cache.set(kind + path, result)
+      }
+      return result
+    }
+
+    host.fileExists = cached('f:', fileExists)
+    if (directoryExists) host.directoryExists = cached('d:', directoryExists)
+
+    try {
+      return processor.createProgram(options)
+    } finally {
+      cache = undefined
+      host.fileExists = fileExists
+      host.directoryExists = directoryExists
+    }
+  }) as typeof ts.createProgram
+
+  return { ...processor, createProgram }
+}
+
 interface RuntimeInternals {
   runtimeOptions: CreateRuntimeOptions,
   programProcessor: ProgramProcessor,
@@ -212,7 +250,7 @@ export class Runtime {
   static async toInstance({ processor = 'ts', ...options }: CreateRuntimeOptions) {
     const mod = await loadProgramProcessor(processor)
     const api = (mod as any).default ?? mod
-    return new Runtime(options, api)
+    return new Runtime(options, withCachedHostLookups(api))
   }
 
   protected root: string
