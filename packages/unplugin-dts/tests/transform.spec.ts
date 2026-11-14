@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   collectRelativeModuleSpecifiers,
   hasExportDefault,
+  hasNormalExport,
   normalizeGlob,
   transformCode,
   transformModuleSpecifiers,
@@ -14,6 +15,17 @@ import ts from '../src/core/ts-loader.cjs'
 import type { Alias } from 'vite'
 
 describe('transform tests', () => {
+  it.each(['export interface Options {}', 'export type Mode = "compact" | "full"'])(
+    'should detect the named type export in %s',
+    declaration => {
+      const defaultExport = 'export default function render(): string'
+
+      expect(hasNormalExport(declaration)).toBe(true)
+      expect(hasNormalExport(`${declaration}\n${defaultExport}`)).toBe(true)
+      expect(hasNormalExport(defaultExport)).toBe(false)
+    },
+  )
+
   it('should retain reference context when resolving declaration aliases', () => {
     const content = transformCode({
       filePath: '/src/index.d.ts',

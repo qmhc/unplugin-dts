@@ -231,7 +231,7 @@ import { DefineComponent } from 'vue'
 - **类型：** `boolean`
 - **默认值：** `false`
 
-在发出声明文件后生成类型入口文件。开启 `bundleTypes` 时强制为 `true`。
+在发出声明文件后生成类型入口文件。入口会重导出接口、类型别名等命名声明，也会重导出已有的默认导出。开启 `bundleTypes` 时强制为 `true`。
 
 单入口时，按 `package.json` 的 `publishConfig.types` → `types` → `typings` → `exports` 链查找，回退到 `${outDir}/index.d.ts`。若解析到的路径不以 `.d.ts` 结尾，会自动修正并发出警告。
 
