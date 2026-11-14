@@ -233,7 +233,7 @@ Remove side-effect-only imports (`import 'xxx'`) from generated declaration file
 - **Type:** `boolean`
 - **Default:** `false`
 
-Generate a types entry file after emitting declarations. Forced to `true` when `bundleTypes` is enabled.
+Generate a types entry file after emitting declarations. It re-exports named declarations, including interfaces and type aliases, alongside any default export. Forced to `true` when `bundleTypes` is enabled.
 
 For a single entry, the plugin resolves the output path from `package.json` (`publishConfig.types` → `types` → `typings` → `exports`) or falls back to `${outDir}/index.d.ts`. If the resolved path does not end with `.d.ts`, it is auto-corrected with a warning.
 

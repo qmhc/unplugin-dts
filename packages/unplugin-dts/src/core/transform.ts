@@ -499,7 +499,7 @@ export function hasNormalExport(content: string) {
       } else {
         has = true
       }
-    } else if ('modifiers' in node && Array.isArray(node.modifiers) && node.modifiers.length > 1) {
+    } else if ('modifiers' in node && Array.isArray(node.modifiers)) {
       for (let i = 0, len = node.modifiers.length; i < len; ++i) {
         if (
           node.modifiers[i].kind === ts.SyntaxKind.ExportKeyword &&
