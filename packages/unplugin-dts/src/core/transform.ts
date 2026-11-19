@@ -200,7 +200,7 @@ export function transformCode(options: {
           importMap.get(libName) ?? importMap.set(libName, new Set<string>()).get(libName)!
 
         if (node.importClause.name && !usedDefault.has(libName)) {
-          const usedType = node.importClause.name.escapedText as string
+          const usedType = node.importClause.name.text
 
           usedDefault.set(libName, usedType)
           importSet.add(`default as ${usedType}`)
@@ -209,9 +209,9 @@ export function transformCode(options: {
         if (node.importClause.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
           node.importClause.namedBindings.elements.forEach(element => {
             if (element.propertyName) {
-              importSet.add(`${element.propertyName.getText(ast)} as ${element.name.escapedText}`)
+              importSet.add(`${element.propertyName.getText(ast)} as ${element.name.text}`)
             } else {
-              importSet.add(element.name.escapedText as string)
+              importSet.add(element.name.text)
             }
           })
         }
@@ -262,7 +262,7 @@ export function transformCode(options: {
       const importSet =
         importMap.get(libName) ?? importMap.set(libName, new Set<string>()).get(libName)!
 
-      let usedType = node.qualifier.escapedText as string
+      let usedType = node.qualifier.text
 
       if (usedType === 'default') {
         usedType =

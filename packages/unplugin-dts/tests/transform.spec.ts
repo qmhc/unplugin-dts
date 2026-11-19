@@ -387,6 +387,31 @@ describe('transform tests', () => {
     )
   })
 
+  it('test: transformCode (identifiers starting with two underscores)', () => {
+    const options = (content: string, staticImport = false) => ({
+      content,
+      filePath: '',
+      aliases: [],
+      aliasesExclude: [],
+      staticImport,
+      clearPureImport: false,
+      cleanVueFileName: false,
+    })
+
+    expect(
+      transformCode(options("import __VLS_src from './script.js';\nexport default __VLS_src;"))
+        .content,
+    ).toEqual("import { default as __VLS_src } from './script.js';\nexport default __VLS_src;")
+
+    expect(
+      transformCode(options("import { __a, b as __b } from './c';\nexport { __a, __b };")).content,
+    ).toEqual("import { __a, b as __b } from './c';\nexport { __a, __b };")
+
+    expect(transformCode(options("let a: import('./c').__A;", true)).content).toEqual(
+      "import { __A } from './c';\nlet a: __A;",
+    )
+  })
+
   it('test: transformCode (remove pure imports)', () => {
     const options = (content: string) => ({
       content,
