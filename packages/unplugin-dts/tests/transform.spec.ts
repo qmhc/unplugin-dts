@@ -158,6 +158,80 @@ describe('transform tests', () => {
     ).toEqual("import { E, F } from 'foo';\nfunction d(param: E): F")
   })
 
+  describe('static import bindings', () => {
+    const transform = (content: string) =>
+      transformCode({
+        content,
+        filePath: '/src/index.d.ts',
+        aliases: [],
+        aliasesExclude: [],
+        staticImport: true,
+        clearPureImport: false,
+        cleanVueFileName: false,
+      }).content
+
+    it('should distinguish same-named exports from different modules', () => {
+      const content = transform(`
+        export declare const pair: {
+          a: import('./a').Foo;
+          b: import('./b').Foo;
+          again: import('./b').Foo;
+        };
+      `)
+      expect(content).toContain("import { Foo } from './a';")
+      expect(content).toContain("import { Foo as Foo_1 } from './b';")
+      expect(content).toContain('b: Foo_1;')
+      expect(content).toContain('again: Foo_1;')
+    })
+
+    it('should reserve declarations and imports that follow an import type', () => {
+      const content = transform(`
+        export type Result = import('./a').Foo;
+        interface Foo { local: true }
+        import { Other as Foo_1 } from './other';
+      `)
+      expect(content).toContain("import { Foo as Foo_2 } from './a';")
+      expect(content).toContain('export type Result = Foo_2;')
+    })
+
+    it('should reuse existing aliases independently of declaration order', () => {
+      const content = transform(`
+        export type Result = import('./a').Foo;
+        import { Foo as Existing } from './a';
+        export type FactoryType = typeof import('./b').default;
+        import Factory from './b';
+      `)
+      expect(content).toContain("import { Foo as Existing } from './a';")
+      expect(content).toContain('export type Result = Existing;')
+      expect(content).toContain('export type FactoryType = typeof Factory;')
+      expect(content).not.toContain('__DTS_DEFAULT_')
+    })
+
+    it('should avoid capturing type parameters and existing global references', () => {
+      const content = transform(`
+        import { Foo } from './a';
+        export declare function get<Foo>(): import('./a').Foo;
+        export type Original = Error;
+        export type External = import('./b').Error;
+      `)
+      expect(content).toContain("import { Foo, Foo as Foo_1 } from './a';")
+      expect(content).toContain('get<Foo>(): Foo_1;')
+      expect(content).toContain("import { Error as Error_1 } from './b';")
+      expect(content).toContain('export type Original = Error;')
+    })
+
+    it('should reserve generated default names and preserve nested type arguments', () => {
+      const content = transform(`
+        interface __DTS_DEFAULT_0__ { local: true }
+        export type Result = import('./a').default<import('./b').Foo<import('./c').Foo>>;
+        export type Factory = typeof import('./a').default;
+      `)
+      expect(content).toContain("import { default as __DTS_DEFAULT_1__ } from './a';")
+      expect(content).toContain('Result = __DTS_DEFAULT_1__<Foo<Foo_1>>;')
+      expect(content).toContain('Factory = typeof __DTS_DEFAULT_1__;')
+    })
+  })
+
   it('test: transformCode (process aliases)', () => {
     const aliases: Alias[] = [
       // '@/*' -> '/*'

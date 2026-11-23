@@ -291,6 +291,11 @@ work by the number of formats. Declaration formats must still be configured expl
 `moduleFormat`; the plugin does not infer them from Vite's JavaScript formats or write conditional
 `exports.types` metadata to `package.json`.
 
+`staticImport: true` rewrites qualified import types such as `import('./a').Foo` into
+static imports. If another module exports `Foo`, or that name is already used in the
+declaration file, a local alias keeps the types distinct. Existing import aliases are
+reused where they are not shadowed by declarations. `bundleTypes` enables this automatically.
+
 ## Using with Vite Templates
 
 If you are using the official Vite template, you should specify `tsconfigPath`:

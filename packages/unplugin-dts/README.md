@@ -40,6 +40,9 @@ For dual ESM/CommonJS declarations, explicitly configure two `outDirs` entries w
 and the self-contained result is reused for both declaration formats. Configure conditional
 `exports.types` entries separately in `package.json`.
 
+With `staticImport: true` (also enabled by `bundleTypes`), generated imports use distinct
+local aliases when exported type names collide with other imports or declarations.
+
 ## Documentation
 
 - [Usage](../../docs/en/usage.md)

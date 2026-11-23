@@ -827,6 +827,70 @@ defineProps<{ msg: ${type} }>()
     expect(rebuiltDeclarations).not.toEqual(previousDeclarations)
   })
 
+  it.each([false, true])(
+    'should preserve distinct imported types in consumer declarations (bundle: %s)',
+    async bundleTypes => {
+      tempDir = mkdtempSync(resolvePath(tmpdir(), 'unplugin-dts-'))
+      writeFileSync(
+        resolvePath(tempDir, 'package.json'),
+        JSON.stringify({ name: 'static-imports', version: '1.0.0', types: 'dist/index.d.ts' }),
+      )
+      writeFileSync(
+        resolvePath(tempDir, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: { module: 'ESNext', moduleResolution: 'bundler', strict: true },
+          include: ['src/**/*'],
+        }),
+      )
+      mkdirSync(resolvePath(tempDir, 'src'))
+      for (const [name, content] of Object.entries({
+        'a.ts': `export interface Foo { fromA: string }
+          export const makeA = (): Foo => ({ fromA: 'a' })`,
+        'b.ts': `export interface Foo { fromB: number }
+          export const makeB = (): Foo => ({ fromB: 1 })`,
+        'index.ts': `import { makeA } from './a'
+          import { makeB } from './b'
+          export const pair = () => ({ a: makeA(), b: makeB() })`,
+      })) {
+        writeFileSync(resolvePath(tempDir, 'src', name), content)
+      }
+      const runtime = await Runtime.toInstance({
+        root: tempDir,
+        tsconfigPath: 'tsconfig.json',
+        entries: { index: resolvePath(tempDir, 'src/index.ts') },
+      })
+      await runtime.emitOutput({ staticImport: true, bundleTypes })
+
+      const consumer = resolvePath(tempDir, 'consumer.ts')
+      writeFileSync(
+        consumer,
+        `
+        import { pair } from './dist/index.js'
+        const result = pair()
+        const fromA: string = result.a.fromA
+        const fromB: number = result.b.fromB
+        // @ts-expect-error The two modules' Foo types must remain distinct.
+        result.a.fromB
+        // @ts-expect-error The two modules' Foo types must remain distinct.
+        result.b.fromA
+      `,
+      )
+      const program = ts.createProgram([consumer], {
+        module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.Bundler,
+        noEmit: true,
+        strict: true,
+        types: [],
+      })
+      expect(
+        ts
+          .getPreEmitDiagnostics(program)
+          .map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')),
+      ).toEqual([])
+    },
+    15_000,
+  )
+
   it('should not create self-referencing synthetic entry when entry dts path equals types path', async () => {
     tempDir = mkdtempSync(resolve(tmpdir(), 'unplugin-dts-'))
 

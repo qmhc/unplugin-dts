@@ -283,6 +283,8 @@ export default defineConfig({
 `moduleFormat` 显式配置；插件不会从 Vite 的 JavaScript formats 推导，也不会替你向
 `package.json` 写入条件化的 `exports.types` 元数据。
 
+`staticImport: true` 会将 `import('./a').Foo` 等类型引用改写为静态导入。如果其他模块也导出 `Foo`，或声明文件中已使用此名称，则通过本地别名区分类型。已有的导入别名在未被声明遮蔽时会被复用。`bundleTypes` 会自动启用此选项。
+
 ## 配合 Vite 模板使用
 
 如果你从 Vite 官方模板开始，你应该指定 `tsconfigPath`：

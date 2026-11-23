@@ -120,10 +120,16 @@ export function transformCode(options: {
   const dir = dirname(options.filePath)
 
   const importMap = new Map<string, Set<string>>()
-  const usedDefault = new Map<string, string>()
+  const importedNames = new Map<string, Map<string, string>>()
+  const reservedNames = new Set<string>()
+  const declaredNames = new Set<string>()
+  const specifierNames = new WeakMap<ts.StringLiteral, string>()
   const declareModules: string[] = []
 
   const toLibName = (specifier: ts.StringLiteral) => {
+    const cached = specifierNames.get(specifier)
+    if (cached !== undefined) return cached
+
     const origin = specifier.text
     let name = transformAlias(origin, dir, options.aliases, options.aliasesExclude)
 
@@ -139,11 +145,86 @@ export function transformCode(options: {
       name = name.replace(/\.vue$/, '')
     }
 
-    return options.transformModuleSpecifier?.(name) ?? name
+    name = options.transformModuleSpecifier?.(name) ?? name
+    specifierNames.set(specifier, name)
+    return name
   }
 
   let indexCount = 0
   let importCount = 0
+
+  if (options.staticImport) {
+    // Imports are hoisted to file scope, so their names must be safe in every scope
+    // where an import type is replaced, including declarations later in the file.
+    walkSourceFile(ast, (node, parent) => {
+      if (ts.isIdentifier(node) && !(ts.isImportTypeNode(parent) && parent.qualifier === node)) {
+        reservedNames.add(node.text)
+      }
+
+      if (
+        (ts.isTypeParameterDeclaration(node) ||
+          ts.isParameter(node) ||
+          ts.isVariableDeclaration(node) ||
+          ts.isBindingElement(node) ||
+          ts.isFunctionDeclaration(node) ||
+          ts.isClassDeclaration(node) ||
+          ts.isInterfaceDeclaration(node) ||
+          ts.isTypeAliasDeclaration(node) ||
+          ts.isEnumDeclaration(node) ||
+          ts.isModuleDeclaration(node) ||
+          ts.isImportEqualsDeclaration(node)) &&
+        node.name &&
+        ts.isIdentifier(node.name)
+      ) {
+        declaredNames.add(node.name.text)
+      }
+    })
+
+    for (const node of ast.statements) {
+      if (
+        !ts.isImportDeclaration(node) ||
+        !node.importClause ||
+        !ts.isStringLiteral(node.moduleSpecifier)
+      )
+        continue
+
+      const libName = toLibName(node.moduleSpecifier)
+      const names = importedNames.get(libName) ?? new Map<string, string>()
+      importedNames.set(libName, names)
+      if (node.importClause.name) names.set('default', node.importClause.name.text)
+      const bindings = node.importClause.namedBindings
+      if (bindings && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          names.set((element.propertyName ?? element.name).text, element.name.text)
+        }
+      }
+    }
+  }
+
+  const getStaticImport = (libName: string, imported: string) => {
+    const names = importedNames.get(libName) ?? new Map<string, string>()
+    importedNames.set(libName, names)
+    let local = names.get(imported)
+
+    if (!local || declaredNames.has(local)) {
+      if (imported === 'default') {
+        do {
+          local = `__DTS_DEFAULT_${indexCount++}__`
+        } while (reservedNames.has(local))
+      } else {
+        local = imported
+        let suffix = 0
+        while (reservedNames.has(local)) local = `${imported}_${++suffix}`
+      }
+      reservedNames.add(local)
+      names.set(imported, local)
+    }
+
+    const importSet = importMap.get(libName) ?? new Set<string>()
+    importMap.set(libName, importSet)
+    importSet.add(imported === local ? imported : `${imported} as ${local}`)
+    return local
+  }
 
   // Collect locally declared __VLS_ identifiers (type aliases, interfaces, functions, variables)
   // so we only replace unresolved __VLS_ type references, not those with local declarations.
@@ -199,10 +280,9 @@ export function transformCode(options: {
         const importSet =
           importMap.get(libName) ?? importMap.set(libName, new Set<string>()).get(libName)!
 
-        if (node.importClause.name && !usedDefault.has(libName)) {
+        if (node.importClause.name) {
           const usedType = node.importClause.name.escapedText as string
 
-          usedDefault.set(libName, usedType)
           importSet.add(`default as ${usedType}`)
         }
 
@@ -259,20 +339,10 @@ export function transformCode(options: {
         return !!node.typeArguments
       }
 
-      const importSet =
-        importMap.get(libName) ?? importMap.set(libName, new Set<string>()).get(libName)!
-
-      let usedType = node.qualifier.escapedText as string
-
-      if (usedType === 'default') {
-        usedType =
-          usedDefault.get(libName) ??
-          usedDefault.set(libName, `__DTS_DEFAULT_${indexCount++}__`).get(libName)!
-
-        importSet.add(`default as ${usedType}`)
+      const imported = node.qualifier.text
+      const usedType = getStaticImport(libName, imported)
+      if (usedType !== imported) {
         s.update(node.qualifier.pos, node.qualifier.end, usedType)
-      } else {
-        importSet.add(usedType)
       }
 
       // s.update(node.pos, node.end, ` ${usedType}`)

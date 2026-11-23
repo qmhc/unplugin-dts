@@ -68,6 +68,9 @@ export default defineConfig({
 })
 ```
 
+With `staticImport: true` (also enabled by `bundleTypes`), generated imports use distinct
+local aliases when exported type names collide with other imports or declarations.
+
 ## Documentation
 
 For full documentation, please refer to [unplugin-dts](../../docs/en/usage.md).
