@@ -66,6 +66,10 @@ dts({
 configured declaration variants, while conditional `exports.types` entries remain package
 metadata that you configure in `package.json`.
 
+For libraries with multiple entry points, `bundleTypes: { workerThreads: 2 }` runs
+API Extractor on up to two worker threads. Each worker uses additional memory;
+`workerThreads: 0` (the default) keeps extraction on the main thread.
+
 ## Documentation
 
 - [Usage](./docs/en/usage.md) - Installation and bundler configuration

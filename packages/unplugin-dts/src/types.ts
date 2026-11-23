@@ -14,6 +14,8 @@ import type {
 
 export type { ModuleFormat, OutDirConfig, OutDirsOption, Resolver, RollupConfig, Runtime }
 
+export type BundleTypesOptions = Exclude<EmitOptions['bundleTypes'], boolean | undefined>
+
 export interface PluginInstance {
   /**
    * Returns a Rollup plugin.

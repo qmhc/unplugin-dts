@@ -255,6 +255,13 @@ export interface EmitOptions {
     | boolean
     | {
       /**
+         * Maximum API Extractor worker threads. Zero runs extraction on the main thread.
+         * Each worker holds its own TypeScript program, increasing memory use.
+         *
+         * @default 0
+         */
+      workerThreads?: number,
+      /**
          * Override the config of `@microsoft/api-extractor`.
          *
          * @default {}

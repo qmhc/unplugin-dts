@@ -262,6 +262,19 @@ import { DefineComponent } from 'vue'
 
 配置为对象时，支持以下选项：
 
+#### `bundleTypes.workerThreads`
+
+- **类型：** `number`
+- **默认值：** `0`
+
+非负整数，限制 API Extractor 工作线程的数量。设置为大于零时，多入口声明会在工作线程中并行打包。线程在一次构建中复用，并在提取完成或失败后关闭。
+
+每个线程持有独立的 TypeScript 程序。多入口库建议从 `2` 开始，根据内存情况调整。单入口或小型项目可能因线程启动开销而变慢。
+
+工作线程模式仅支持公共声明打包。为避免多个线程写入相同文件，须禁用 API 报告、文档模型、TSDoc 元数据和其他打包输出。传给工作线程的配置须支持结构化克隆；`afterRollup` 仍在主线程中按入口顺序执行，结果包含 `succeeded`、`apiReportChanged`、`errorCount` 和 `warningCount`。
+
+所有入口提取成功后才替换中间声明，避免覆盖其他线程仍在读取的输入文件。
+
 #### `bundleTypes.extractorConfig`
 
 - **类型：** `BundleConfig`

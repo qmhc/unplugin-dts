@@ -291,6 +291,16 @@ work by the number of formats. Declaration formats must still be configured expl
 `moduleFormat`; the plugin does not infer them from Vite's JavaScript formats or write conditional
 `exports.types` metadata to `package.json`.
 
+For CPU-heavy libraries with multiple entry points, enable a bounded worker pool:
+
+```ts
+dts({ bundleTypes: { workerThreads: 2 } })
+```
+
+This runs at most two extraction jobs at once. The default is `0` (no workers).
+See [workerThreads](./options.md#bundletypesworkerthreads) for memory and output
+configuration requirements.
+
 ## Using with Vite Templates
 
 If you are using the official Vite template, you should specify `tsconfigPath`:

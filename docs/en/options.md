@@ -264,6 +264,28 @@ Rollup type declaration files into a single file per entry using `@microsoft/api
 
 When configured as an object:
 
+#### `bundleTypes.workerThreads`
+
+- **Type:** `number`
+- **Default:** `0`
+
+A non-negative integer limiting the number of API Extractor worker threads. Set it
+above zero to bundle entry points in parallel without blocking the main thread.
+Workers are reused within a build and stopped when extraction finishes or fails.
+
+Each worker holds its own TypeScript program. Start with `2` for libraries with
+several entry points and increase only when memory permits. Small or single-entry
+libraries may take longer because of worker startup.
+
+Worker mode supports public declaration rollups. API reports, doc models, TSDoc
+metadata and additional rollup outputs must be disabled to avoid workers writing
+the same files. Configuration sent to workers must be structured-cloneable;
+`afterRollup` still runs on the main thread, in entry order. Its result contains
+`succeeded`, `apiReportChanged`, `errorCount`, and `warningCount`.
+
+Outputs are staged until every entry succeeds, so workers cannot overwrite
+another entry's declaration inputs while extraction is still running.
+
 #### `bundleTypes.extractorConfig`
 
 - **Type:** `BundleConfig`
