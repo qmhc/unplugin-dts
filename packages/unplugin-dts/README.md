@@ -40,6 +40,10 @@ For dual ESM/CommonJS declarations, explicitly configure two `outDirs` entries w
 and the self-contained result is reused for both declaration formats. Configure conditional
 `exports.types` entries separately in `package.json`.
 
+For libraries with multiple entry points, `bundleTypes: { workerThreads: 2 }` runs
+API Extractor on up to two worker threads. Each worker uses additional memory;
+`workerThreads: 0` (the default) keeps extraction on the main thread.
+
 ## Documentation
 
 - [Usage](../../docs/en/usage.md)

@@ -1,7 +1,7 @@
 import { basename, dirname, extname, relative } from 'node:path'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
-import { availableParallelism } from 'node:os'
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises'
+import { availableParallelism, tmpdir } from 'node:os'
 
 import ts from './ts-loader.cjs'
 import { createFilter } from '@rollup/pluginutils'
@@ -10,6 +10,8 @@ import { green, yellow } from 'kolorist'
 import { loadProgramProcessor } from './processor'
 import { createDeclarationModuleResolver } from './module-resolver'
 import { createApiExtractorProvider, getHasExtractor, normalizeProvider } from './providers'
+import { ApiExtractorWorkerPool } from './providers/worker-pool'
+
 import { JsonResolver, SvelteResolver, VueResolver, parseResolvers } from './resolvers'
 import {
   collectRelativeModuleSpecifiers,
@@ -52,6 +54,8 @@ import {
   tsToDtsWithExtension,
   unwrapPromise,
 } from './utils'
+
+import type { BundleProviderResult } from './providers'
 
 import type { Alias } from './types'
 import type { ProgramProcessor, SourceFileCacheStats, VersionedCompilerHost } from './processor'
@@ -1055,7 +1059,12 @@ export class Runtime {
       bundledPackages,
       invokeOptions,
       configPath: bundleConfigPath,
+      workerThreads = 0,
     } = isNativeObj(bundleTypes) ? bundleTypes : {}
+
+    if (!Number.isSafeInteger(workerThreads) || workerThreads < 0) {
+      throw new RangeError(`${logPrefix} bundleTypes.workerThreads must be a non-negative integer.`)
+    }
 
     /**
      * 清理 Vue 文件名，移除 .vue 部分
@@ -1529,6 +1538,15 @@ export class Runtime {
           const compilerOptions = configPath
             ? getTsConfig(configPath, this.host.readFile).compilerOptions
             : rawCompilerOptions
+          const bundleEntries = entryPaths.size ? Array.from(entryPaths.values()) : [typesPath]
+          const workerPool = workerThreads
+            ? new ApiExtractorWorkerPool(Math.min(workerThreads, bundleEntries.length))
+            : undefined
+          const bundleOutputDir = workerPool
+            ? await mkdtemp(resolve(tmpdir(), 'unplugin-dts-bundle-'))
+            : undefined
+          const stagedBundles = new Map<string, { content: string, result: BundleProviderResult }>()
+          let bundleIndex = 0
           const provider = normalizeProvider(
             createApiExtractorProvider({
               // api-extractor.json
@@ -1536,6 +1554,7 @@ export class Runtime {
               extractorConfig,
               bundledPackages,
               invokeOptions,
+              workerPool,
             }),
           )
           const bundleResolution = createModuleResolutionContext(emittedFiles)
@@ -1553,11 +1572,23 @@ export class Runtime {
             '.svelte',
           ])
 
+          const finishBundle = async (path: string, result: BundleProviderResult) => {
+            emittedFiles.delete(path)
+            rollupFiles.add(path)
+
+            if (typeof afterRollup === 'function') {
+              await unwrapPromise(afterRollup(result.meta as ExtractorResult))
+            }
+          }
+
           const bundleEntry = async (path: string) => {
             path = normalizePath(path)
 
             if (emptyEntryFiles.has(path)) return
 
+            const outputPath = bundleOutputDir
+              ? resolve(bundleOutputDir, `${bundleIndex++}.d.ts`)
+              : path
             const result = await provider.bundle({
               root,
               // tsconfig.json
@@ -1565,7 +1596,7 @@ export class Runtime {
               compilerOptions,
               outDir,
               entryPath: path,
-              outputPath: path,
+              outputPath,
               // fileName 已经包含正确的后缀（.d.ts / .d.cts / .d.mts）
               fileName: basename(path),
               libFolder: getTsLibFolder(),
@@ -1579,7 +1610,7 @@ export class Runtime {
               )
             }
 
-            const bundledContent = await readFile(path, 'utf-8')
+            const bundledContent = await readFile(outputPath, 'utf-8')
             const danglingSpecifiers = collectRelativeModuleSpecifiers(bundledContent).filter(
               specifier =>
                 bundleResolution.resolve(path, specifier) !== undefined ||
@@ -1592,19 +1623,30 @@ export class Runtime {
               )
             }
 
-            emittedFiles.delete(path)
-            rollupFiles.add(path)
-
-            if (typeof afterRollup === 'function') {
-              await unwrapPromise(afterRollup(result.meta as ExtractorResult))
+            if (workerPool) {
+              stagedBundles.set(path, { content: bundledContent, result })
+            } else {
+              await finishBundle(path, result)
             }
           }
 
-          await runParallel(
-            maxConcurrency,
-            entryPaths.size ? Array.from(entryPaths.values()) : [typesPath],
-            bundleEntry,
-          )
+          try {
+            if (workerPool) {
+              // Every entry reads the same declaration graph. Do not replace any input
+              // until all workers have finished reading it.
+              await Promise.all(bundleEntries.map(bundleEntry))
+              for (const [path, { content }] of stagedBundles) await writeFile(path, content)
+              for (const path of bundleEntries) {
+                const staged = stagedBundles.get(normalizePath(path))
+                if (staged) await finishBundle(normalizePath(path), staged.result)
+              }
+            } else {
+              await runParallel(maxConcurrency, bundleEntries, bundleEntry)
+            }
+          } finally {
+            await workerPool?.close()
+            if (bundleOutputDir) await rm(bundleOutputDir, { recursive: true, force: true })
+          }
 
           const emptyEntries = new Map(
             Array.from(emittedFiles).filter(([filePath]) => emptyEntryFiles.has(filePath)),

@@ -3,6 +3,7 @@ import { ensureAbsolute, mergeObjects, resolve, tryGetPackageInfo, tryGetPkgPath
 import type { ExtractorLogLevel, IConfigFile } from '@microsoft/api-extractor'
 import type { BundleConfig, ExtractorInvokeOptions, ExtractorResult } from '../types'
 import type { BundleProvider, BundleProviderResult } from './types'
+import type { ApiExtractorWorkerPool } from './worker-pool'
 
 export interface ApiExtractorBundleOptions {
   root: string,
@@ -38,20 +39,23 @@ export function getHasExtractor() {
 
 const dtsRE = /\.d\.(m|c)?tsx?$/
 
-export async function bundleDtsFiles({
-  root,
-  configPath,
-  tsconfigPath,
-  compilerOptions,
-  outDir,
-  entryPath,
-  outputPath,
-  fileName,
-  libFolder,
-  extractorConfig = {},
-  bundledPackages,
-  invokeOptions = {},
-}: ApiExtractorBundleOptions) {
+export async function bundleDtsFiles(
+  {
+    root,
+    configPath,
+    tsconfigPath,
+    compilerOptions,
+    outDir,
+    entryPath,
+    outputPath,
+    fileName,
+    libFolder,
+    extractorConfig = {},
+    bundledPackages,
+    invokeOptions = {},
+  }: ApiExtractorBundleOptions,
+  isolatedOutput = false,
+) {
   const { Extractor, ExtractorConfig } = await import('@microsoft/api-extractor')
 
   configPath = configPath ? ensureAbsolute(configPath, root) : ''
@@ -113,6 +117,23 @@ export async function bundleDtsFiles({
     mergeObjects(configObject, extractorConfig)
   }
 
+  if (isolatedOutput) {
+    if (
+      configObject.apiReport?.enabled ||
+      configObject.docModel?.enabled ||
+      configObject.tsdocMetadata?.enabled ||
+      configObject.dtsRollup?.untrimmedFilePath ||
+      configObject.dtsRollup?.betaTrimmedFilePath ||
+      configObject.dtsRollup?.alphaTrimmedFilePath
+    ) {
+      throw new Error(
+        '[unplugin-dts] Worker bundling supports public declaration rollups only. ' +
+          'Disable additional API Extractor outputs or set bundleTypes.workerThreads to 0.',
+      )
+    }
+    configObject.dtsRollup!.publicTrimmedFilePath = outputPath!
+  }
+
   const config = ExtractorConfig.prepare({
     configObject,
     configObjectFullPath,
@@ -155,11 +176,12 @@ export function createApiExtractorProvider({
   extractorConfig,
   bundledPackages,
   invokeOptions,
-}: ApiExtractorProviderOptions): BundleProvider {
+  workerPool,
+}: ApiExtractorProviderOptions & { workerPool?: ApiExtractorWorkerPool }): BundleProvider {
   return {
     name: 'api-extractor',
     async bundle(context) {
-      const result = await bundleDtsFiles({
+      const options: ApiExtractorBundleOptions = {
         root: context.root,
         configPath,
         tsconfigPath: context.tsconfigPath,
@@ -172,7 +194,8 @@ export function createApiExtractorProvider({
         extractorConfig,
         bundledPackages,
         invokeOptions,
-      })
+      }
+      const result = await (workerPool ? workerPool.bundle(options) : bundleDtsFiles(options))
 
       return {
         succeeded: result.succeeded,

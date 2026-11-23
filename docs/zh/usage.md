@@ -283,6 +283,14 @@ export default defineConfig({
 `moduleFormat` 显式配置；插件不会从 Vite 的 JavaScript formats 推导，也不会替你向
 `package.json` 写入条件化的 `exports.types` 元数据。
 
+多入口库可启用有并发限制的工作线程池：
+
+```ts
+dts({ bundleTypes: { workerThreads: 2 } })
+```
+
+此配置最多同时执行两个提取任务，默认值为 `0`（不使用工作线程）。内存和输出配置要求详见 [workerThreads](./options.md#bundletypesworkerthreads)。
+
 ## 配合 Vite 模板使用
 
 如果你从 Vite 官方模板开始，你应该指定 `tsconfigPath`：

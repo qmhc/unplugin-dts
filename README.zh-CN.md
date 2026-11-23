@@ -65,6 +65,8 @@ dts({
 `moduleFormat` 不会从构建工具的 JavaScript formats 自动推导。插件负责写出配置的声明变体，
 条件化的 `exports.types` 属于包元数据，仍需由你在 `package.json` 中配置。
 
+多入口库可使用 `bundleTypes: { workerThreads: 2 }`，让 API Extractor 最多在两个工作线程中并行运行。每个线程会增加内存占用；默认值 `workerThreads: 0` 保持在主线程中执行。
+
 ## 文档
 
 - [使用](./docs/zh/usage.md) - 安装与各构建工具配置

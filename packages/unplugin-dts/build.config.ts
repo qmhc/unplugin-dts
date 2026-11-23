@@ -9,16 +9,13 @@ export default defineBuildConfig({
     'src/rspack',
     'src/vite',
     'src/webpack',
+    {
+      input: 'src/core/providers/api-extractor-worker',
+      name: 'api-extractor-worker',
+      declaration: false,
+    },
   ],
-  externals: [
-    'esbuild',
-    'rolldown',
-    'rollup',
-    'rspack',
-    'typescript',
-    'vite',
-    'webpack',
-  ],
+  externals: ['esbuild', 'rolldown', 'rollup', 'rspack', 'typescript', 'vite', 'webpack'],
   clean: true,
   declaration: true,
   rollup: {
