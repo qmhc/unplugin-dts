@@ -65,6 +65,8 @@ dts({
 `moduleFormat` 不会从构建工具的 JavaScript formats 自动推导。插件负责写出配置的声明变体，
 条件化的 `exports.types` 属于包元数据，仍需由你在 `package.json` 中配置。
 
+启用 `staticImport: true`（`bundleTypes` 也会启用此选项）时，生成的导入会使用独立的本地别名，避免与其他导入或声明的类型名称冲突。
+
 ## 文档
 
 - [使用](./docs/zh/usage.md) - 安装与各构建工具配置

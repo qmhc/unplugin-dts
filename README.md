@@ -66,6 +66,9 @@ dts({
 configured declaration variants, while conditional `exports.types` entries remain package
 metadata that you configure in `package.json`.
 
+With `staticImport: true` (also enabled by `bundleTypes`), generated imports use distinct
+local aliases when exported type names collide with other imports or declarations.
+
 ## Documentation
 
 - [Usage](./docs/en/usage.md) - Installation and bundler configuration
